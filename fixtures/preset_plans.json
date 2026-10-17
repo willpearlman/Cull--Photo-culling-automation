@@ -1,30 +1,87 @@
 {
-  "cull this formal to about 150": {
-    "target": 150,
+  "cull this shoot to about 30": {
+    "target": 30,
     "rules": [
-      {"type": "filter", "max_eyes_closed": 0, "allow_intentional": true, "min_sharpness": 150, "drop_exposure_flags": true},
-      {"type": "dedupe_bursts", "keep": 1},
-      {"type": "coverage", "by": "group_id", "min_per_group": 1},
-      {"type": "cap", "by": "group_id", "max_per_group": 3},
-      {"type": "prefer", "tags": ["candid"], "weight": 1.5}
+      {
+        "type": "filter",
+        "max_eyes_closed": 0,
+        "allow_intentional": true,
+        "min_sharpness": 150,
+        "drop_exposure_flags": true
+      },
+      {
+        "type": "dedupe_bursts",
+        "keep": 1
+      },
+      {
+        "type": "coverage",
+        "by": "group_id",
+        "min_per_group": 1
+      },
+      {
+        "type": "cap",
+        "by": "group_id",
+        "max_per_group": 3
+      },
+      {
+        "type": "prefer",
+        "tags": [
+          "candid"
+        ],
+        "weight": 1.5
+      }
     ]
   },
   "strict: no blinks at all": {
-    "target": 120,
+    "target": 24,
     "rules": [
-      {"type": "filter", "max_eyes_closed": 0, "allow_intentional": false, "min_sharpness": 200, "drop_exposure_flags": true},
-      {"type": "dedupe_bursts", "keep": 1},
-      {"type": "coverage", "by": "group_id", "min_per_group": 1},
-      {"type": "cap", "by": "group_id", "max_per_group": 2}
+      {
+        "type": "filter",
+        "max_eyes_closed": 0,
+        "allow_intentional": false,
+        "min_sharpness": 200,
+        "drop_exposure_flags": true
+      },
+      {
+        "type": "dedupe_bursts",
+        "keep": 1
+      },
+      {
+        "type": "coverage",
+        "by": "group_id",
+        "min_per_group": 1
+      },
+      {
+        "type": "cap",
+        "by": "group_id",
+        "max_per_group": 2
+      }
     ]
   },
   "every group twice": {
-    "target": 200,
+    "target": 45,
     "rules": [
-      {"type": "filter", "max_eyes_closed": 0, "allow_intentional": true, "min_sharpness": 150, "drop_exposure_flags": true},
-      {"type": "dedupe_bursts", "keep": 1},
-      {"type": "coverage", "by": "group_id", "min_per_group": 2},
-      {"type": "cap", "by": "group_id", "max_per_group": 4}
+      {
+        "type": "filter",
+        "max_eyes_closed": 0,
+        "allow_intentional": true,
+        "min_sharpness": 150,
+        "drop_exposure_flags": true
+      },
+      {
+        "type": "dedupe_bursts",
+        "keep": 1
+      },
+      {
+        "type": "coverage",
+        "by": "group_id",
+        "min_per_group": 2
+      },
+      {
+        "type": "cap",
+        "by": "group_id",
+        "max_per_group": 4
+      }
     ]
   }
 }

@@ -34,8 +34,8 @@ is what lets three people build stages without touching each other's files.
 **ingest.py**
 - `exiftool -b -PreviewImage -w <CULL_ROOT>/previews/%f.jpg -ext ARW <CULL_ROOT>/shoot` through ExifToolHelper.execute.
 - Rotate previews with Pillow using the ARW's Orientation tag (1, 3, 6, 8).
-- Capture time = `DateTimeOriginal` + `SubSecTimeOriginal`.
-- Bursts: sort by time. New burst when gap > 2.0 s or phash distance > 10 from the previous frame.
+- Capture time = `DateTimeOriginal` + `SubSecTimeOriginal` when present. Will's Sony files have no `SubSecTimeOriginal`, so times are whole seconds.
+- Bursts: sort by capture time, then by filename (Sony numbers frames in shot order, so this orders frames within the same second). New burst when gap > 2.0 s or phash distance > 10 from the previous frame.
 
 **local_scores.py**: grayscale preview resized to 1000px long edge. Sharpness = `cv2.Laplacian(img, cv2.CV_64F).var()`. Underexposed if more than 5% of pixels are 0, overexposed if more than 5% are 255.
 

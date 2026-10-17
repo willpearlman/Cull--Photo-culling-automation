@@ -100,10 +100,10 @@ sentences, names any unmet rule.
 
 Add a __main__ block: python -m cull.agent "<instruction>" prints the plan JSON
 using fixtures/fake_scores.json. Stop when these give sensible plans:
-1. "Cull this formal to about 150. At least one of every group. No blinks
+1. "Cull this formal to about 30. At least one of every group. No blinks
    except intentional moments. Favor candids."
 2. "Keep 40, max 2 per moment, strict on blinks."
-3. "Two of every group, around 200."
+3. "Two of every group, around 45."
 Reply in 6 lines max.
 ```
 

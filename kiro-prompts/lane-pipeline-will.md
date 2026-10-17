@@ -17,11 +17,11 @@ they say "your turn on <file>" in chat so two people never edit one file.
 
 This decides go or no-go.
 
-1. Copy 5 ARW files into `C:\cull-demo\shoot\` and import that folder into Lightroom Classic.
+1. Copy 5 ARW files into `C:\Users\willp\cull-data\demo\shoot\` and import that folder into Lightroom Classic.
 2. PowerShell, with your real filenames (.xmp basename must match the .ARW):
 
 ```powershell
-cd C:\cull-demo\shoot
+cd C:\Users\willp\cull-data\demo\shoot
 exiftool -XMP-xmp:Rating=5 -XMP-xmp:Label=Green -XMP-dc:Subject+=group DSC00001.xmp
 exiftool -XMP-xmp:Rating=1 DSC00002.xmp
 ```
@@ -32,7 +32,7 @@ exiftool -XMP-xmp:Rating=1 DSC00002.xmp
 Fail by 5:30PM: export becomes a CSV plus a folder of copies (kill criterion).
 
 Then copy the demo shoot (300 to 500 frames with clear groups or tables) into
-`C:\cull-demo\shoot\`. Write down [N] frames, [K] delivered, [X] hours.
+`C:\Users\willp\cull-data\demo\shoot\`. Write down [N] frames, [K] delivered, [X] hours.
 
 ---
 
@@ -127,7 +127,7 @@ moment, Cull restores it, the agent turns an instruction into a plan.
 
 ```powershell
 python -m cull.pipeline --stage all
-copy C:\cull-demo\work\scores.json C:\cull-demo\work\scores.frozen.json
+copy C:\Users\willp\cull-data\demo\work\scores.json C:\Users\willp\cull-data\demo\work\scores.frozen.json
 ```
 
 Kiro only to fix a crash in your own files, with the last 20 lines of the error:
