@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+demo/
+*.ARW
+*.arw
+*.xmp
+previews/
+work/
+*.overrides.json
