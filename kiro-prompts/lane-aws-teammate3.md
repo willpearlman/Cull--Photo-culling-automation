@@ -92,7 +92,9 @@ shoot summary (frame count, moments with labels and frame counts, tag counts),
 one tool submit_plan whose inputSchema is the plan schema, and
 toolChoice {"tool": {"name": "submit_plan"}}. Validate: clamp target to
 1..len(images), drop unknown rule types, fill missing rule fields with the
-defaults from the first plan in fixtures/preset_plans.json. Map per-person
+defaults from the first plan in fixtures/preset_plans.json. Set the filter
+rule's min_sharpness to config.MIN_SHARPNESS unless the instruction asks for a
+different threshold, so plans match the top_n baseline. Map per-person
 requests ("max 3 of the same couple") to a per-moment cap.
 
 explain(plan, result) -> str: one short call, max 120 output tokens, 2 to 3

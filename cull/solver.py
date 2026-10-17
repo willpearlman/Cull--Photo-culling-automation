@@ -1,16 +1,195 @@
-"""Solver stub. AWS and logic lane (Teammate 3), task 8. Contract: .kiro/steering/contracts.md.
-Until task 8 lands, the server gets an empty but valid result."""
+"""Rule solver. AWS and logic lane (Teammate 3), task 8. Contract: .kiro/steering/contracts.md.
+
+Pure Python. Order: overrides, filter, dedupe_bursts, coverage, fill (prefer weight), cap.
+Ties break by sharpness, then path, so results are deterministic. Input is never mutated.
+"""
+from cull import config
+
+DEFAULT_FILTER = {"type": "filter", "max_eyes_closed": 0, "allow_intentional": True,
+                  "min_sharpness": config.MIN_SHARPNESS, "drop_exposure_flags": True}
+
+
+def _score(img):
+    s = img.get("claude_score")
+    return float(s) if s is not None else 0.0
+
+
+def _sharp(img):
+    return float(img.get("sharpness") or 0.0)
+
+
+def _rank_key(score_fn):
+    """Sort key: highest score, then highest sharpness, then path."""
+    return lambda img: (-score_fn(img), -_sharp(img), img["path"])
+
+
+def _rules(plan, rtype):
+    return [r for r in plan.get("rules", []) if r.get("type") == rtype]
+
+
+def _filter_reason(img, rule):
+    """Return a rejection reason, or None if the image passes the filter."""
+    min_sharp = rule.get("min_sharpness")
+    if min_sharp is not None and _sharp(img) < min_sharp:
+        return f"Rejected: blurry (sharpness {_sharp(img):.0f} < {min_sharp:g})"
+    if rule.get("drop_exposure_flags", True):
+        flags = img.get("exposure_flags") or []
+        if flags:
+            return f"Rejected: {', '.join(flags)}"
+    max_closed = rule.get("max_eyes_closed")
+    closed = img.get("eyes_closed_count") or 0
+    if max_closed is not None and closed > max_closed:
+        if not (rule.get("allow_intentional", False) and img.get("intentional_eyes_closed")):
+            return f"Rejected: eyes closed ({closed} of {img.get('face_count') or 0} faces)"
+    return None
+
+
+def _apply_filters(pool, rules, reasons):
+    for rule in rules:
+        kept = []
+        for img in pool:
+            why = _filter_reason(img, rule)
+            if why:
+                reasons[img["path"]] = why
+            else:
+                kept.append(img)
+        pool = kept
+    return pool
+
+
+def _dedupe(pool, keep, reasons):
+    bursts = {}
+    for img in pool:
+        bursts.setdefault(img.get("burst_id") or img["path"], []).append(img)
+    kept = []
+    for bid, frames in bursts.items():
+        frames.sort(key=_rank_key(_score))
+        kept.extend(frames[:keep])
+        for img in frames[keep:]:
+            reasons[img["path"]] = f"Rejected: weaker frame of burst {bid}"
+    return kept
+
+
+def _group_label(images, by):
+    labels = {}
+    for img in images:
+        g = img.get(by)
+        if g is not None and g not in labels:
+            labels[g] = img.get("group_label") or g
+    return labels
 
 
 def run_plan(images, plan):
-    return {
-        "picks": [],
-        "decisions": {i["path"]: {"rating": 1, "label": None, "reason": "Rejected: solver not built yet"}
-                      for i in images},
-        "report": [{"type": "target", "met": False, "detail": "Solver not built yet"}],
-        "unmet_groups": [],
-    }
+    images = sorted(images, key=lambda i: i["path"])  # new list; rows are only read
+    target = int(plan.get("target") or 0)
+    reasons, picks = {}, []
+
+    cap_rules = _rules(plan, "cap")
+    cov_rules = _rules(plan, "coverage")
+    by = (cov_rules or cap_rules or [{}])[0].get("by", "group_id")
+    max_per = min((r.get("max_per_group", 10 ** 9) for r in cap_rules), default=None)
+    labels = _group_label(images, by)
+    counts = {}
+
+    def pick(img, reason):
+        picks.append(img["path"])
+        reasons[img["path"]] = reason
+        g = img.get(by)
+        counts[g] = counts.get(g, 0) + 1
+
+    def capped(img):
+        return max_per is not None and counts.get(img.get(by), 0) >= max_per
+
+    # 1. Overrides
+    pool = []
+    for img in images:
+        if img.get("overridden") and img.get("final_rating") == 5:
+            pick(img, "Kept: user override")
+        elif img.get("overridden") and img.get("final_rating") == 1:
+            reasons[img["path"]] = "Rejected: user override"
+        else:
+            pool.append(img)
+
+    # 2. Filter, 3. dedupe bursts
+    pool = _apply_filters(pool, _rules(plan, "filter"), reasons)
+    for rule in _rules(plan, "dedupe_bursts"):
+        pool = _dedupe(pool, int(rule.get("keep", 1)), reasons)
+
+    # Prefer weight applies to fill order
+    prefer = _rules(plan, "prefer")
+
+    def weighted(img):
+        s = _score(img)
+        tags = set(img.get("scene_tags") or [])
+        for r in prefer:
+            if tags & set(r.get("tags") or []):
+                s *= float(r.get("weight", 1.0))
+        return s
+
+    # 4. Coverage
+    report, unmet = [], []
+    for rule in cov_rules:
+        need = int(rule.get("min_per_group", 1))
+        groups = sorted(labels)
+        for g in groups:
+            cands = sorted((i for i in pool if i.get(by) == g and i["path"] not in reasons),
+                           key=_rank_key(_score))
+            for img in cands:
+                if counts.get(g, 0) >= need or capped(img):
+                    break
+                pick(img, f"Kept: coverage pick for {labels[g]}")
+            if counts.get(g, 0) < need:
+                unmet.append(g)
+        unmet = sorted(set(unmet))
+        detail = (f"All {len(groups)} moments have at least {need} pick(s)" if not unmet else
+                  "Unmet: " + ", ".join(f"{g} ({labels[g]})" for g in unmet))
+        report.append({"type": "coverage", "met": not unmet, "detail": detail})
+
+    # 5. Fill to target by weighted score, respecting cap
+    cap_hit = set()
+    for img in sorted((i for i in pool if i["path"] not in reasons), key=_rank_key(weighted)):
+        if len(picks) >= target:
+            reasons[img["path"]] = f"Rejected: below target cutoff (score {_score(img):g})"
+        elif capped(img):
+            g = img.get(by)
+            cap_hit.add(g)
+            reasons[img["path"]] = f"Rejected: cap of {max_per} reached for {labels.get(g, g)}"
+        else:
+            g = img.get(by)
+            pick(img, f"Kept: fill by score ({weighted(img):g}) for {labels.get(g, g)}")
+
+    if cap_rules:
+        detail = (f"Max {max_per} per moment; cap reached in " + ", ".join(sorted(cap_hit))
+                  if cap_hit else f"Max {max_per} per moment; no moment over cap")
+        over = [g for g, c in counts.items() if c > max_per]
+        report.append({"type": "cap", "met": not over, "detail": detail +
+                       (f"; overrides exceed cap in {', '.join(sorted(over))}" if over else "")})
+    n = len(picks)
+    detail = f"{n} of {target} picks"
+    if n > target:
+        # Coverage and overrides are never dropped to hit the target.
+        detail += f": overrides and coverage need {n}"
+    elif n < target:
+        detail += (f": cap reached in {len(cap_hit)} of {len(labels)} moments" if cap_hit
+                   else ": ran out of eligible frames")
+    report.append({"type": "target", "met": n == target, "detail": detail})
+
+    picked = set(picks)
+    decisions = {}
+    for img in images:
+        p = img["path"]
+        if p in picked:
+            decisions[p] = {"rating": 5, "label": config.label_for(img.get("scene_tags")),
+                            "reason": reasons[p]}
+        else:
+            decisions[p] = {"rating": 1, "label": None,
+                            "reason": reasons.get(p, "Rejected: not selected")}
+    return {"picks": picks, "decisions": decisions, "report": report, "unmet_groups": unmet}
 
 
 def top_n(images, n):
-    return []
+    """Baseline score-and-cut: default filter, best frame per burst, top n by claude_score."""
+    pool = _apply_filters(sorted(images, key=lambda i: i["path"]), [DEFAULT_FILTER], {})
+    pool = _dedupe(pool, 1, {})
+    pool.sort(key=_rank_key(_score))
+    return [i["path"] for i in pool[:n]]
