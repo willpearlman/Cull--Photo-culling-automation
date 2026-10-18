@@ -127,10 +127,11 @@ def run_plan(images, plan):
         return s
 
     # 4. Coverage
-    report, unmet = [], []
+    report, all_unmet = [], set()
     for rule in cov_rules:
         need = int(rule.get("min_per_group", 1))
         groups = sorted(labels)
+        rule_unmet = []
         for g in groups:
             cands = sorted((i for i in pool if i.get(by) == g and i["path"] not in reasons),
                            key=_rank_key(_score))
@@ -139,11 +140,14 @@ def run_plan(images, plan):
                     break
                 pick(img, f"Kept: coverage pick for {labels[g]}")
             if counts.get(g, 0) < need:
-                unmet.append(g)
-        unmet = sorted(set(unmet))
-        detail = (f"All {len(groups)} moments have at least {need} pick(s)" if not unmet else
-                  "Unmet: " + ", ".join(f"{g} ({labels[g]})" for g in unmet))
-        report.append({"type": "coverage", "met": not unmet, "detail": detail})
+                rule_unmet.append(g)
+        rule_unmet = sorted(set(rule_unmet))
+        all_unmet.update(rule_unmet)
+        detail = (f"All {len(groups)} moments have at least {need} pick(s)"
+                  if not rule_unmet else
+                  "Unmet: " + ", ".join(f"{g} ({labels[g]})" for g in rule_unmet))
+        report.append({"type": "coverage", "met": not rule_unmet, "detail": detail})
+    unmet = sorted(all_unmet)
 
     # 5. Fill to target by weighted score, respecting cap
     cap_hit = set()

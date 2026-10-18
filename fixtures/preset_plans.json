@@ -1,5 +1,5 @@
 {
-  "cull this shoot to about 30": {
+  "about 30": {
     "target": 30,
     "rules": [
       {
@@ -32,14 +32,14 @@
       }
     ]
   },
-  "strict: no blinks at all": {
-    "target": 24,
+  "strict on blinks": {
+    "target": 40,
     "rules": [
       {
         "type": "filter",
         "max_eyes_closed": 0,
         "allow_intentional": false,
-        "min_sharpness": 220,
+        "min_sharpness": 170,
         "drop_exposure_flags": true
       },
       {
@@ -58,7 +58,7 @@
       }
     ]
   },
-  "every group twice": {
+  "two of every group": {
     "target": 45,
     "rules": [
       {

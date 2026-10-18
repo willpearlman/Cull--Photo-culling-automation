@@ -4,7 +4,6 @@ Uses only DetectFaces and DetectLabels. Never touches face collections
 (no IndexFaces, SearchFaces, or any collection API).
 """
 import io
-import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -139,14 +138,15 @@ def run(images, cached):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     log.setLevel(logging.INFO)
-    rows = json.loads(config.SCORES_PATH.read_text(encoding="utf-8"))["images"]
+    previews = sorted(config.PREVIEW_DIR.glob("*.jpg"))[:5]
+    rows = []
+    for preview in previews:
+        rel = preview.relative_to(config.CULL_ROOT).as_posix()
+        rows.append({"path": rel, "preview": rel, "sharpness": config.MIN_SHARPNESS})
     results = run(rows, {})
     for row in rows:
         r = results[row["path"]]
         name = row["path"].rsplit("/", 1)[-1]
-        if _blurry(row):
-            print(f"{name}  sharpness={row.get('sharpness')}  skipped: blurry")
-        else:
-            print(f"{name}  sharpness={row.get('sharpness')}  faces={r['face_count']}  "
-                  f"eyes_closed={r['eyes_closed_count']}  smiles={r['smile_count']}  "
-                  f"tags={r['scene_tags']}" + (f"  error={r['error']}" if "error" in r else ""))
+        print(f"{name}  faces={r['face_count']}  eyes_closed={r['eyes_closed_count']}  "
+              f"smiles={r['smile_count']}  tags={r['scene_tags']}"
+              + (f"  error={r['error']}" if "error" in r else ""))

@@ -81,7 +81,7 @@ def _quality_ok(img):
 
 
 def finalists(images):
-    """Sharp, unflagged frames: top 2 per burst by sharpness, plus possible intentional moments."""
+    """Top sharp frames per burst, plus every possible intentional closed-eye moment."""
     good = [im for im in images if _quality_ok(im)]
     by_burst = defaultdict(list)
     for im in good:
@@ -90,7 +90,7 @@ def finalists(images):
     for frames in by_burst.values():
         frames.sort(key=lambda im: (-im["sharpness"], im["path"]))
         chosen.update(im["path"] for im in frames[:TOP_PER_BURST])
-    chosen.update(im["path"] for im in good
+    chosen.update(im["path"] for im in images
                   if (im.get("eyes_closed_count") or 0) > 0 and (im.get("face_count") or 0) <= 2)
     return [im for im in images if im["path"] in chosen]
 

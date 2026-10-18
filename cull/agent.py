@@ -150,12 +150,15 @@ def _clean_rule(rule, defaults):
 
 def validate(raw, images, instruction=""):
     """Clamp target, drop unknown rule types, fill missing fields from the first preset."""
+    if not images:
+        raise ValueError("cannot create a culling plan without images")
     defaults = _defaults()
     try:
         target = int(raw.get("target"))
-    except (TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError):
         target = len(images) // 2
-    rules = [r for r in (_clean_rule(r, defaults) for r in raw.get("rules") or []
+    raw_rules = raw.get("rules") if isinstance(raw, dict) else []
+    rules = [r for r in (_clean_rule(r, defaults) for r in raw_rules or []
                          if isinstance(r, dict)) if r]
     if not any(r["type"] == "filter" for r in rules):
         rules.insert(0, copy.deepcopy(defaults["filter"]))
@@ -163,7 +166,7 @@ def validate(raw, images, instruction=""):
         for r in rules:
             if r["type"] == "filter":
                 r["min_sharpness"] = config.MIN_SHARPNESS  # matches the top_n baseline
-    return {"target": max(1, min(target, len(images))) if images else 1, "rules": rules}
+    return {"target": max(1, min(target, len(images))), "rules": rules}
 
 
 def _converse(**kwargs):
@@ -173,6 +176,8 @@ def _converse(**kwargs):
 
 
 def make_plan(instruction, images):
+    if not images:
+        raise ValueError("cannot create a culling plan without images")
     system = SYSTEM_TEMPLATE.format(min_sharp=config.MIN_SHARPNESS, tags=", ".join(TAG_VOCAB),
                                     summary=shoot_summary(images))
     resp = _converse(
@@ -193,8 +198,32 @@ def make_plan(instruction, images):
     return validate(raw, images, instruction)
 
 
+def _fallback_explanation(plan, result):
+    picks = len(result.get("picks", []))
+    target = plan.get("target", picks)
+    first = f"Selected {picks} of {target} requested frames."
+    unmet = [r for r in result.get("report", []) if r.get("met") is False]
+    if unmet:
+        details = "; ".join(
+            f"{r.get('type', 'rule')}: {r.get('detail', 'not satisfied')}" for r in unmet)
+        second = f"Unmet rules — {details}."
+    else:
+        second = "All requested rules were met."
+    return f"{first} {second}"
+
+
+def _valid_explanation(text, result):
+    sentences = [part for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part]
+    if not 2 <= len(sentences) <= 3:
+        return False
+    low = text.lower()
+    unmet_types = [str(r.get("type", "rule")).lower()
+                   for r in result.get("report", []) if r.get("met") is False]
+    return all(rtype in low for rtype in unmet_types)
+
+
 def explain(plan, result):
-    """2 to 3 sentences on the result, naming any unmet rule."""
+    """Make one short call, guaranteeing 2 to 3 sentences that name every unmet rule."""
     report = result.get("report", [])
     prompt = ("Summarise this photo cull for the photographer in 2 to 3 short sentences, "
               "under 60 words total. Name every unmet rule and why; skip rules that were met. "
@@ -204,7 +233,8 @@ def explain(plan, result):
     resp = _converse(messages=[{"role": "user", "content": [{"text": prompt}]}],
                      inferenceConfig={"maxTokens": 120})
     parts = resp["output"]["message"]["content"]
-    return " ".join(p["text"] for p in parts if "text" in p).strip()
+    text = " ".join(p["text"] for p in parts if "text" in p).strip()
+    return text if _valid_explanation(text, result) else _fallback_explanation(plan, result)
 
 
 if __name__ == "__main__":
