@@ -27,6 +27,8 @@ BEDROCK_TASTE_MODEL_ID = os.getenv("BEDROCK_TASTE_MODEL_ID", "")
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "6"))
 MIN_FACE_WIDTH = float(os.getenv("MIN_FACE_WIDTH", "0.025"))
 MIN_SHARPNESS = float(os.getenv("MIN_SHARPNESS", "170"))
+# A gap longer than this between consecutive frames starts a new moment.
+MOMENT_GAP_SECONDS = float(os.getenv("MOMENT_GAP_SECONDS", "90"))
 
 LABEL_BY_TAG = {
     "group": "Green",

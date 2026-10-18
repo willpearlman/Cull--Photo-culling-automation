@@ -1,23 +1,24 @@
 """Moment grouping (no API).
 
-Sort frames by capture time, then split into moments:
-- a gap of more than 90 s from the previous frame starts a new moment, and
-- a change of primary tag starts a new moment, but only once the new tag holds
-  for 3 frames in a row (ignores one-frame tag flickers).
+Sort frames by capture time, then filename. A gap of more than
+config.MOMENT_GAP_SECONDS from the previous frame starts a new moment. Time gap
+is the only split signal; scene tags only feed the label.
 
-Primary tag = first of group, couple, dance floor, food, detail, portrait in a
-frame's scene_tags. When scene_tags is null (rekog not run yet), only the
-90 s gap rule applies.
+Label = "<dominant tag>, <start>-<end>", where the dominant tag is the most
+common primary tag in the moment (first of group, couple, dance floor, food,
+detail, portrait in each frame's scene_tags). "moment" when no frame has one.
 
 run(images, cached) recomputes every image and ignores cached, returning
 {path: {"group_id": ..., "group_label": ...}} for all images.
 """
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
+from pathlib import PurePosixPath
 
-GAP_SECONDS = 90.0
-TAG_CONFIRM = 3  # a new primary tag must hold this many frames to split
+from . import config
+
 PRIMARY_TAGS = ["group", "couple", "dance floor", "food", "detail", "portrait"]
 
 
@@ -40,6 +41,14 @@ def _primary_tag(row):
     return None
 
 
+def _dominant_tag(moment):
+    """Most common primary tag; ties go to the tag seen first in the moment."""
+    counts = Counter(r["_primary"] for r in moment if r["_primary"])
+    if not counts:
+        return None
+    return counts.most_common(1)[0][0]  # Counter keeps first-seen order on ties
+
+
 def _fmt_clock(dt):
     """9:40AM style, hour with no leading zero, minute zero-padded."""
     hour = dt.hour % 12 or 12
@@ -59,77 +68,40 @@ def _label(primary, start, end):
     return f"{name}, {s_time}{s_ap}-{e_time}{e_ap}"
 
 
-def _tag_change_confirmed(rows, idx, current):
-    """True when rows[idx] onward hold the same new primary tag for TAG_CONFIRM
-    frames, confirming a real moment change rather than a one-frame flicker."""
-    new_tag = rows[idx].get("_primary")
-    if new_tag is None or new_tag == current:
-        return False
-    run = 0
-    for j in range(idx, len(rows)):
-        if rows[j].get("_primary") == new_tag:
-            run += 1
-            if run >= TAG_CONFIRM:
-                return True
-        else:
-            break
-    return False
-
-
 def run(images: list[dict], cached: dict) -> dict:
     rows = [dict(img) for img in images]
     for row in rows:
         row["_time"] = _parse_time(row.get("capture_time"))
         row["_primary"] = _primary_tag(row)
 
-    # Sort by capture time, then path for stable order within the same second.
-    rows.sort(key=lambda r: (r["_time"] or datetime.min, r.get("path") or ""))
+    # Sort by capture time, then filename for stable order within the same second.
+    rows.sort(key=lambda r: (
+        r["_time"] or datetime.min,
+        PurePosixPath(r.get("path") or "").name,
+    ))
 
     moments = []  # list of lists of rows
     current = []
-    current_tag = None
-    for idx, row in enumerate(rows):
-        if not current:
-            current = [row]
-            current_tag = row["_primary"]
-            continue
-
-        prev = current[-1]
-        split = False
-
-        # Time-gap rule.
-        if row["_time"] and prev["_time"]:
-            if (row["_time"] - prev["_time"]).total_seconds() > GAP_SECONDS:
-                split = True
-
-        # Primary-tag change rule, confirmed over 3 frames.
-        if not split and _tag_change_confirmed(rows, idx, current_tag):
-            split = True
-
-        if split:
+    for row in rows:
+        prev = current[-1] if current else None
+        if (
+            prev is not None
+            and row["_time"] and prev["_time"]
+            and (row["_time"] - prev["_time"]).total_seconds() > config.MOMENT_GAP_SECONDS
+        ):
             moments.append(current)
-            current = [row]
-            current_tag = row["_primary"]
-        else:
-            current.append(row)
-            if current_tag is None:
-                current_tag = row["_primary"]
-
+            current = []
+        current.append(row)
     if current:
         moments.append(current)
 
     out = {}
     for i, moment in enumerate(moments, start=1):
         group_id = f"G{i:03d}"
-        primary = None
-        for row in moment:
-            if row["_primary"]:
-                primary = row["_primary"]
-                break
         times = [r["_time"] for r in moment if r["_time"]]
         start = min(times) if times else None
         end = max(times) if times else None
-        label = _label(primary, start, end)
+        label = _label(_dominant_tag(moment), start, end)
         for row in moment:
             out[row["path"]] = {"group_id": group_id, "group_label": label}
     return out
