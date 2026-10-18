@@ -3,7 +3,7 @@
 
 // First plan from fixtures/preset_plans.json ("cull this shoot to about 30").
 const DEFAULT_PLAN = {
-  target: 30,
+  target: 85,
   rules: [
     { type: "filter", max_eyes_closed: 0, allow_intentional: true, min_sharpness: 150, drop_exposure_flags: true },
     { type: "dedupe_bursts", keep: 1 },
