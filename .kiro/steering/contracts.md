@@ -123,6 +123,7 @@ First matching tag wins. No match: no label.
 | POST | `/api/override` | `{"path": str, "rating": 1 | 5 | null}` | `{"ok": true}` (null clears). Saved to `config.OVERRIDES_PATH` as `{path: rating}`, applied in memory. Never written into scores.json |
 | POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int}` |
 | GET | `/thumb/{name}` | none | 400px JPEG, cached in `work/thumbs/` |
+| GET | `/preview/{name}` | none | Full-resolution preview JPEG from `previews/`, served as-is (read only). Used for grid tiles at 3 columns or fewer |
 
 ## Work folder layout
 

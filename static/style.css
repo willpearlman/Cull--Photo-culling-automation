@@ -148,7 +148,18 @@ body {
   font-style: italic;
 }
 
+/* Thumbnail size slider in the top bar; app.js sets --cols on #grid. */
+.tile-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.tile-size input { width: 120px; accent-color: #2f6df0; }
+
 #grid {
+  --cols: 6;
   flex: 1 1 auto;
   padding: 16px;
   overflow-x: hidden;
@@ -183,16 +194,16 @@ body {
 }
 .toggle button.active { background: #2f6df0; color: #fff; }
 
+/* Fixed column count from the slider; tiles share the row width equally. */
 .strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   gap: 8px;
 }
 
 .tile {
   position: relative;
-  width: 160px;
-  height: 120px;
+  aspect-ratio: 4 / 3;
   background: #2a2d33;
   border: 3px solid transparent;
   border-radius: 4px;
@@ -253,16 +264,3 @@ body {
 }
 
 .tile:hover .overlay { transform: translateY(0); }
-
-/* Wide screens: fixed 6-column tile grid that fills the row. */
-@media (min-width: 1440px) {
-  .strip {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-  .tile {
-    width: auto;
-    height: auto;
-    aspect-ratio: 4 / 3;
-  }
-}

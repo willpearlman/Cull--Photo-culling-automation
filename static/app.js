@@ -25,7 +25,8 @@ const state = {
   unmetReasons: {},  // group_id -> why coverage found no usable frame
   explanation: "",   // text from the latest /api/plan
   view: "cull",      // "cull" | "topn"
-  baseline: new Set() // top-N paths from /api/baseline at the current target
+  baseline: new Set(), // top-N paths from /api/baseline at the current target
+  cols: 6            // grid columns from the Size slider (2..10)
 };
 
 // Find a rule of a given type in the current plan (or null).
@@ -104,6 +105,18 @@ async function cycleOverride(path) {
   showSummary();
 }
 
+// /thumb is a 400px copy; at 3 columns or fewer tiles outgrow it, so use the
+// full embedded preview. Denser views keep the small thumb for fast scrolling.
+const FULL_PREVIEW_MAX_COLS = 3;
+
+function useFullPreview() {
+  return state.cols <= FULL_PREVIEW_MAX_COLS;
+}
+
+function imageSrc(name) {
+  return (useFullPreview() ? "/preview/" : "/thumb/") + encodeURIComponent(name);
+}
+
 function tileFor(img) {
   const tile = document.createElement("div");
   tile.className = "tile";
@@ -119,7 +132,8 @@ function tileFor(img) {
   const img_el = document.createElement("img");
   img_el.alt = name;
   img_el.loading = "lazy";
-  img_el.src = "/thumb/" + encodeURIComponent(name);
+  img_el.dataset.name = name;
+  img_el.src = imageSrc(name);
   // On 404 (fake data or missing preview) fall back to a grey filename tile.
   img_el.addEventListener("error", () => {
     img_el.remove();
@@ -246,7 +260,53 @@ function render() {
   window.scrollTo(0, scrollY);
 }
 
+// Size slider: sets --cols on #grid and remembers the last column count.
+// Slider runs 2..10 but is inverted, so dragging right gives fewer, bigger tiles.
+const GRID_COLS_KEY = "cull.gridCols";
+const COLS_MIN = 2;
+const COLS_MAX = 10;
+
+function initTileSlider() {
+  const slider = document.getElementById("tile-size");
+  const grid = document.getElementById("grid");
+  let saved = null;
+  try {
+    saved = localStorage.getItem(GRID_COLS_KEY);
+  } catch (err) {
+    // Storage blocked (private mode, file://); keep the default.
+  }
+  const n = Number(saved);
+  if (saved !== null && Number.isInteger(n) && n >= COLS_MIN && n <= COLS_MAX) {
+    state.cols = n;
+  }
+  slider.value = String(COLS_MIN + COLS_MAX - state.cols);
+
+  const apply = () => {
+    const wasLarge = useFullPreview();
+    state.cols = COLS_MIN + COLS_MAX - Number(slider.value);
+    grid.style.setProperty("--cols", String(state.cols));
+    slider.setAttribute("aria-valuetext", state.cols + " columns");
+    slider.title = state.cols + " columns";
+    // Swap image sources only when crossing the full-preview threshold.
+    if (useFullPreview() !== wasLarge) {
+      for (const el of grid.querySelectorAll(".tile img[data-name]")) {
+        el.src = imageSrc(el.dataset.name);
+      }
+    }
+  };
+  apply();
+  slider.addEventListener("input", apply);
+  slider.addEventListener("change", () => {
+    try {
+      localStorage.setItem(GRID_COLS_KEY, String(state.cols));
+    } catch (err) {
+      // Not saved; the slider still works for this session.
+    }
+  });
+}
+
 async function init() {
+  initTileSlider();
   try {
     const scores = await getJSON("/api/scores");
     state.images = scores.images || [];

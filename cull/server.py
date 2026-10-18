@@ -153,11 +153,23 @@ def api_export(body: dict):
     return {"written": written}
 
 
+def _preview_file(name):
+    """Path of a preview JPEG in PREVIEW_DIR, or raise 400/404.
+
+    Plain filename only: no separators of either kind, so nothing outside
+    PREVIEW_DIR can be reached (backslash is a separator on Windows).
+    """
+    if "/" in name or "\\" in name or name in ("", ".", "..") or not name.lower().endswith(".jpg"):
+        raise HTTPException(status_code=400, detail="bad preview name")
+    src = config.PREVIEW_DIR / name
+    if src.resolve().parent != config.PREVIEW_DIR.resolve() or not src.is_file():
+        raise HTTPException(status_code=404, detail="preview not found")
+    return src
+
+
 @app.get("/thumb/{name}")
 def thumb(name: str):
-    src = config.PREVIEW_DIR / name
-    if not src.exists():
-        raise HTTPException(status_code=404, detail="preview not found")
+    src = _preview_file(name)
     config.THUMB_DIR.mkdir(parents=True, exist_ok=True)
     dst = config.THUMB_DIR / name
     if not dst.exists():
@@ -169,6 +181,12 @@ def thumb(name: str):
         except Exception:
             return FileResponse(src)
     return FileResponse(dst, media_type="image/jpeg")
+
+
+@app.get("/preview/{name}")
+def preview(name: str):
+    """Full-resolution embedded preview, served as-is (read only) for large tiles."""
+    return FileResponse(_preview_file(name), media_type="image/jpeg")
 
 
 if _STATIC_DIR.exists():
