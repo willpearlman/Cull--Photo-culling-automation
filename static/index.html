@@ -7,15 +7,39 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Top bar: instruction box, Run, Export land here in later tasks. -->
+  <!-- Top bar: instruction box, Run, Export. -->
   <header id="topbar">
     <span class="brand">Cull</span>
+    <textarea id="instruction" rows="1" placeholder="e.g. cull this shoot to about 30"></textarea>
+    <button id="run-btn" type="button">Run</button>
+    <button id="export-btn" type="button" disabled>Export</button>
+    <span id="spinner" class="spinner" hidden></span>
     <span id="status" class="status">loading…</span>
   </header>
 
   <div id="layout">
-    <!-- Left panel: target, cap, rule report land here in later tasks. -->
-    <aside id="leftpanel"></aside>
+    <!-- Left panel: plan controls and rule report. -->
+    <aside id="leftpanel">
+      <div class="panel-section">
+        <h3>Plan</h3>
+        <label class="field">target
+          <input id="plan-target" type="number" min="0" step="1" />
+        </label>
+        <label class="field">cap per moment
+          <input id="plan-cap" type="number" min="0" step="1" />
+        </label>
+        <label class="field check">
+          <input id="plan-allow-intentional" type="checkbox" />
+          allow intentional eyes closed
+        </label>
+        <button id="replan-btn" type="button">Re-plan</button>
+      </div>
+      <div class="panel-section">
+        <h3>Rule report</h3>
+        <ul id="report" class="report"></ul>
+        <p id="explanation" class="explanation"></p>
+      </div>
+    </aside>
 
     <main id="grid">
       <!-- Moments render as rows here. -->

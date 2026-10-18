@@ -33,7 +33,41 @@ body {
 }
 
 .brand { font-weight: 600; letter-spacing: 0.5px; }
-.status { color: var(--muted); font-size: 12px; }
+.status { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+#instruction {
+  flex: 1 1 auto;
+  max-width: 520px;
+  resize: none;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+#topbar button {
+  background: #2f6df0;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+#topbar button:disabled { opacity: 0.5; cursor: default; }
+#export-btn { background: #3a3f47; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 #layout {
   display: flex;
@@ -47,6 +81,71 @@ body {
   flex: 0 0 240px;
   background: var(--panel);
   border-right: 1px solid var(--line);
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.panel-section { margin-bottom: 20px; }
+.panel-section h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.field input[type="number"] {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 6px;
+  font: inherit;
+}
+.field.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+#replan-btn {
+  width: 100%;
+  background: #2f6df0;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 0;
+  font: inherit;
+  cursor: pointer;
+}
+#replan-btn:disabled { opacity: 0.5; cursor: default; }
+
+.report { list-style: none; margin: 0; padding: 0; }
+.report-row {
+  display: flex;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.report-row .mark { font-weight: 700; }
+.report-row.met .mark { color: var(--pick); }
+.report-row.unmet .mark { color: var(--reject); }
+.report-row.unmet .report-text { color: var(--reject); }
+
+.explanation {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
 }
 
 #grid {
