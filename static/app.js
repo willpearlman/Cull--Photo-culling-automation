@@ -26,7 +26,10 @@ const state = {
   explanation: "",   // text from the latest /api/plan
   view: "cull",      // "cull" | "topn"
   baseline: new Set(), // top-N paths from /api/baseline at the current target
-  cols: 6            // grid columns from the Size slider (2..10)
+  cols: 6,           // grid columns from the Size slider (2..10)
+  undoStack: [],     // override history, each {path, before, after}
+  redoStack: [],     // entries undone, ready to reapply
+  busy: false        // lock: one override round-trip at a time
 };
 
 // Find a rule of a given type in the current plan (or null).
@@ -95,14 +98,98 @@ function nextRating(current) {
   return 5;
 }
 
-async function cycleOverride(path) {
-  const rating = nextRating(state.overrides[path] ?? null);
+// Undo/redo for tile overrides.
+// Every override (click, undo, or redo) runs through setOverride, which POSTs
+// the new rating and re-runs the plan. cycleOverride records each change as
+// {path, before, after} on undoStack and clears redoStack, so a fresh click
+// drops any forward history. undo moves an entry to redoStack and restores
+// `before`; redo moves it back and reapplies `after`. state.busy is a lock:
+// each handler returns early while a round-trip is in flight, so overlapping
+// clicks or key presses cannot interleave POSTs or corrupt the stacks. History
+// lives only in memory, so a reload empties it while the server keeps the
+// overrides themselves.
+const UNDO_LIMIT = 200;
+
+// POST the override and refresh. Shared by cycleOverride, undo, and redo.
+async function setOverride(path, rating) {
   await getJSON("/api/override", { path, rating });
   if (rating === null) delete state.overrides[path];
   else state.overrides[path] = rating;
   await runPlan();
   render();
   showSummary();
+}
+
+function overrideLabel(rating) {
+  if (rating === 5) return "pick";
+  if (rating === 1) return "reject";
+  return "clear";
+}
+
+async function cycleOverride(path) {
+  if (state.busy) return;
+  const before = state.overrides[path] ?? null;
+  const after = nextRating(before);
+  state.busy = true;
+  try {
+    await setOverride(path, after);
+    state.undoStack.push({ path, before, after });
+    if (state.undoStack.length > UNDO_LIMIT) state.undoStack.shift();
+    state.redoStack = [];
+  } catch (err) {
+    setStatus("error: " + err.message);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function undo() {
+  if (state.busy || state.undoStack.length === 0) return;
+  const entry = state.undoStack.pop();
+  state.busy = true;
+  try {
+    await setOverride(entry.path, entry.before);
+    state.redoStack.push(entry);
+    setStatus("Undo: " + overrideLabel(entry.before) + " " + basename(entry.path));
+  } catch (err) {
+    state.undoStack.push(entry);  // leave the stacks unchanged on failure
+    setStatus("error: " + err.message);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function redo() {
+  if (state.busy || state.redoStack.length === 0) return;
+  const entry = state.redoStack.pop();
+  state.busy = true;
+  try {
+    await setOverride(entry.path, entry.after);
+    state.undoStack.push(entry);
+    setStatus("Redo: " + overrideLabel(entry.after) + " " + basename(entry.path));
+  } catch (err) {
+    state.redoStack.push(entry);  // leave the stacks unchanged on failure
+    setStatus("error: " + err.message);
+  } finally {
+    state.busy = false;
+  }
+}
+
+// Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo. Skip when a text field is
+// focused so the browser's own text undo still works in the instruction box.
+function onKeydown(e) {
+  const el = document.activeElement;
+  const tag = el ? el.tagName : "";
+  if (tag === "TEXTAREA" || tag === "INPUT" || (el && el.isContentEditable)) return;
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const key = (e.key || "").toLowerCase();
+  if (key === "z" && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if ((key === "z" && e.shiftKey) || key === "y") {
+    e.preventDefault();
+    redo();
+  }
 }
 
 // /thumb is a 400px copy; at 3 columns or fewer tiles outgrow it, so use the
@@ -330,6 +417,7 @@ async function init() {
   document.getElementById("export-btn").addEventListener("click", exportSidecars);
   document.getElementById("view-cull").addEventListener("click", () => setView("cull"));
   document.getElementById("view-topn").addEventListener("click", () => setView("topn"));
+  document.addEventListener("keydown", onKeydown);
 }
 
 init();
