@@ -1,0 +1,142 @@
+/* Cull review grid. UI lane, task 5. Plain CSS, no framework. */
+:root {
+  --bg: #1b1d21;
+  --panel: #23262b;
+  --line: #34383f;
+  --text: #e7e9ec;
+  --muted: #9aa1ab;
+  --pick: #3ec46d;
+  --reject: #e0564f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+}
+
+/* Top bar reserved; controls land in a later task. */
+#topbar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand { font-weight: 600; letter-spacing: 0.5px; }
+.status { color: var(--muted); font-size: 12px; }
+
+#layout {
+  display: flex;
+  align-items: stretch;
+  min-height: calc(100vh - 48px);
+}
+
+/* Left panel reserved; controls land in a later task. */
+#leftpanel {
+  width: 240px;
+  flex: 0 0 240px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+#grid {
+  flex: 1 1 auto;
+  padding: 16px;
+  overflow-x: hidden;
+}
+
+.moment { margin-bottom: 24px; }
+
+.moment-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 2px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.moment-header .label { font-weight: 600; }
+.moment-header .count { color: var(--muted); font-size: 12px; }
+.moment-header.zero .count { color: var(--reject); font-weight: 600; }
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tile {
+  position: relative;
+  width: 160px;
+  height: 120px;
+  background: #2a2d33;
+  border: 3px solid transparent;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tile.picked { border-color: var(--pick); }
+.tile.ov-pick { border-color: var(--pick); border-style: solid; }
+.tile.ov-reject { border-color: var(--reject); }
+
+.grey {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  background: #33373e;
+  word-break: break-all;
+}
+
+.badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 3px;
+  color: #0e0f11;
+  background: var(--pick);
+}
+.tile.ov-reject .badge { background: var(--reject); color: #fff; }
+
+.overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px;
+  font-size: 11px;
+  background: rgba(10, 11, 13, 0.85);
+  color: var(--text);
+  transform: translateY(100%);
+  transition: transform 0.12s ease;
+}
+
+.tile:hover .overlay { transform: translateY(0); }
