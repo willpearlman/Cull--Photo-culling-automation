@@ -6,7 +6,7 @@
         "type": "filter",
         "max_eyes_closed": 0,
         "allow_intentional": true,
-        "min_sharpness": 150,
+        "min_sharpness": 50,
         "drop_exposure_flags": true
       },
       {
@@ -39,7 +39,7 @@
         "type": "filter",
         "max_eyes_closed": 0,
         "allow_intentional": false,
-        "min_sharpness": 200,
+        "min_sharpness": 100,
         "drop_exposure_flags": true
       },
       {
@@ -65,7 +65,7 @@
         "type": "filter",
         "max_eyes_closed": 0,
         "allow_intentional": true,
-        "min_sharpness": 150,
+        "min_sharpness": 50,
         "drop_exposure_flags": true
       },
       {

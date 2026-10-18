@@ -36,9 +36,12 @@ ACTION FOR PARTNER (UI lane)
 - Nothing required. Fake data and the UI are unaffected.
 
 NOT CHANGED YET (open questions, Teammate 3 lane)
-- fixtures/preset_plans.json still hardcodes min_sharpness 150 and 200. The
-  server uses these presets when Bedrock fails, so those fallback plans still
-  reject frames between 50 and 150.
+- (RESOLVED) fixtures/preset_plans.json now uses min_sharpness 50 (matches
+  config) and 100 for the "strict" preset. Reason: in our sample a sharp
+  keeper (_DSC5332, dusk couple) scores 58.4, below a blurry frame
+  (_DSC8306, 62.5), so no single cutoff separates them; we stay low and let
+  scoring reject blur. Sharpness is a whole-frame measure, so dark scenes and
+  soft backgrounds score low.
 - Frames with exactly 3 faces get no people tag (not portrait, couple, or group).
 - indoor/outdoor tags are often missing (labels like City, Urban, Room are not mapped).
 - detail tag misses objects like Paper, Text, Book.
