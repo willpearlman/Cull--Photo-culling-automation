@@ -27,21 +27,42 @@ def _rules(plan, rtype):
     return [r for r in plan.get("rules", []) if r.get("type") == rtype]
 
 
-def _filter_reason(img, rule):
-    """Return a rejection reason, or None if the image passes the filter."""
+def _filter_failures(img, rule):
+    """Every check of one filter rule the image fails: [(kind, short name, reason text)]."""
+    out = []
     min_sharp = rule.get("min_sharpness")
     if min_sharp is not None and _sharp(img) < min_sharp:
-        return f"Rejected: blurry (sharpness {_sharp(img):.0f} < {min_sharp:g})"
-    if rule.get("drop_exposure_flags", True):
-        flags = img.get("exposure_flags") or []
-        if flags:
-            return f"Rejected: {', '.join(flags)}"
+        out.append(("blur", "blurry", f"blurry (sharpness {_sharp(img):.0f} < {min_sharp:g})"))
+    flags = img.get("exposure_flags") or []
+    if rule.get("drop_exposure_flags", True) and flags:
+        out.append(("exposure", ", ".join(flags), ", ".join(flags)))
     max_closed = rule.get("max_eyes_closed")
     closed = img.get("eyes_closed_count") or 0
     if max_closed is not None and closed > max_closed:
         if not (rule.get("allow_intentional", False) and img.get("intentional_eyes_closed")):
-            return f"Rejected: eyes closed ({closed} of {img.get('face_count') or 0} faces)"
-    return None
+            out.append(("eyes", "eyes closed",
+                        f"eyes closed ({closed} of {img.get('face_count') or 0} faces)"))
+    return out
+
+
+def _filter_reason(img, rule):
+    """Return a rejection reason (first failed check), or None if the image passes."""
+    fails = _filter_failures(img, rule)
+    return f"Rejected: {fails[0][2]}" if fails else None
+
+
+def _all_failures(img, rules):
+    """{kind: short name} across every filter rule, first occurrence wins."""
+    seen = {}
+    for rule in rules:
+        for kind, short, _ in _filter_failures(img, rule):
+            seen.setdefault(kind, short)
+    return seen
+
+
+def _fallback_key(img, fails):
+    """Fewest failures, exposure-only before blur or eyes, then score, sharpness, path."""
+    return (len(fails), set(fails) != {"exposure"}, -_score(img), -_sharp(img), img["path"])
 
 
 def _apply_filters(pool, rules, reasons):
@@ -79,6 +100,36 @@ def _group_label(images, by):
     return labels
 
 
+def _cause(reason):
+    """Short cause for a frame that coverage could not use, from its reason."""
+    if reason is None:
+        return "cap reached"  # passed every filter but the moment hit its cap
+    text = reason.removeprefix("Rejected: ")
+    for cause in ("blurry", "eyes closed", "overexposed", "underexposed"):
+        if text.startswith(cause):
+            return cause
+    if text.startswith("weaker frame of burst"):
+        return "burst duplicate"
+    if text == "user override":
+        return "rejected by user"
+    return text
+
+
+def _unmet_reason(images, by, g, picked, reasons):
+    """'all overexposed', or a count mix like '3 overexposed, 1 eyes closed'."""
+    causes = {}
+    for img in images:
+        if img.get(by) == g and img["path"] not in picked:
+            c = _cause(reasons.get(img["path"]))
+            causes[c] = causes.get(c, 0) + 1
+    if not causes:
+        return "not enough frames"
+    if len(causes) == 1:
+        return f"all {next(iter(causes))}"
+    ranked = sorted(causes.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(f"{n} {c}" for c, n in ranked)
+
+
 def run_plan(images, plan):
     images = sorted(images, key=lambda i: i["path"])  # new list; rows are only read
     target = int(plan.get("target") or 0)
@@ -110,8 +161,12 @@ def run_plan(images, plan):
         else:
             pool.append(img)
 
-    # 2. Filter, 3. dedupe bursts
-    pool = _apply_filters(pool, _rules(plan, "filter"), reasons)
+    # 2. Filter, 3. dedupe bursts. Remember filter failures for the coverage fallback.
+    filter_rules, unfiltered = _rules(plan, "filter"), pool
+    pool = _apply_filters(pool, filter_rules, reasons)
+    passed = {i["path"] for i in pool}
+    failed = {i["path"]: _all_failures(i, filter_rules) for i in unfiltered
+              if i["path"] not in passed}
     for rule in _rules(plan, "dedupe_bursts"):
         pool = _dedupe(pool, int(rule.get("keep", 1)), reasons)
 
@@ -126,12 +181,17 @@ def run_plan(images, plan):
                 s *= float(r.get("weight", 1.0))
         return s
 
-    # 4. Coverage
-    report, all_unmet = [], set()
+    # 4. Coverage (moments smaller than min_frames are exempt; fill may still pick them)
+    sizes = {}
+    for img in images:
+        sizes[img.get(by)] = sizes.get(img.get(by), 0) + 1
+    report, all_unmet, unmet_reasons = [], set(), {}
     for rule in cov_rules:
         need = int(rule.get("min_per_group", 1))
-        groups = sorted(labels)
-        rule_unmet = []
+        min_frames = int(rule.get("min_frames", config.COVERAGE_MIN_FRAMES))
+        groups = sorted(g for g in labels if sizes.get(g, 0) >= min_frames)
+        exempt = len(labels) - len(groups)
+        rule_unmet, rule_fallback = [], []
         for g in groups:
             cands = sorted((i for i in pool if i.get(by) == g and i["path"] not in reasons),
                            key=_rank_key(_score))
@@ -139,13 +199,31 @@ def run_plan(images, plan):
                 if counts.get(g, 0) >= need or capped(img):
                     break
                 pick(img, f"Kept: coverage pick for {labels[g]}")
+            members = [i for i in images if i.get(by) == g]
+            # Fallback: no frame in the moment passed the filters, so take the
+            # least-bad one rather than leave the moment uncovered.
+            if (counts.get(g, 0) < need and rule.get("fallback", True)
+                    and not any(i["path"] in passed for i in members)):
+                fb = sorted((i for i in members if i["path"] in failed),
+                            key=lambda i: _fallback_key(i, failed[i["path"]]))
+                if fb and not capped(fb[0]):
+                    why = ", ".join(failed[fb[0]["path"]].values())
+                    pick(fb[0], f"Kept: coverage fallback, best available ({why})")
+                    rule_fallback.append(g)
             if counts.get(g, 0) < need:
                 rule_unmet.append(g)
         rule_unmet = sorted(set(rule_unmet))
         all_unmet.update(rule_unmet)
+        for g in rule_unmet:
+            unmet_reasons[g] = _unmet_reason(images, by, g, set(picks), reasons)
         detail = (f"All {len(groups)} moments have at least {need} pick(s)"
                   if not rule_unmet else
-                  "Unmet: " + ", ".join(f"{g} ({labels[g]})" for g in rule_unmet))
+                  "Unmet: " + ", ".join(f"{g} ({labels[g]}: {unmet_reasons[g]})"
+                                        for g in rule_unmet))
+        if rule_fallback:
+            detail += f"; fallback pick for {', '.join(rule_fallback)}"
+        if exempt:
+            detail += f" ({exempt} moment(s) under {min_frames} frames exempt)"
         report.append({"type": "coverage", "met": not rule_unmet, "detail": detail})
     unmet = sorted(all_unmet)
 
@@ -188,7 +266,8 @@ def run_plan(images, plan):
         else:
             decisions[p] = {"rating": 1, "label": None,
                             "reason": reasons.get(p, "Rejected: not selected")}
-    return {"picks": picks, "decisions": decisions, "report": report, "unmet_groups": unmet}
+    return {"picks": picks, "decisions": decisions, "report": report, "unmet_groups": unmet,
+            "unmet_reasons": unmet_reasons}
 
 
 def top_n(images, n):

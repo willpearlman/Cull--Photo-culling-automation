@@ -22,6 +22,7 @@ const state = {
   decisions: {},     // path -> {rating, label, reason}
   overrides: {},     // path -> 5 | 1 (local cycle tracking)
   report: [],        // [{type, met, detail}] from the latest run
+  unmetReasons: {},  // group_id -> why coverage found no usable frame
   explanation: "",   // text from the latest /api/plan
   view: "cull",      // "cull" | "topn"
   baseline: new Set() // top-N paths from /api/baseline at the current target
@@ -53,6 +54,25 @@ function applyResult(result) {
   state.picks = new Set(result.picks || []);
   state.decisions = result.decisions || {};
   state.report = result.report || [];
+  state.unmetReasons = result.unmet_reasons || {};
+}
+
+// renderReport (views.js) marks every unmet rule red with a cross. An unmet
+// coverage rule means some moments had no usable frame, which is information,
+// not an error: restyle that row neutrally and list each moment's reason.
+function relabelCoverageRows() {
+  const rows = document.getElementById("report").children;
+  state.report.forEach((entry, i) => {
+    const li = rows[i];
+    const ids = Object.keys(state.unmetReasons).sort();
+    if (!li || entry.type !== "coverage" || entry.met || ids.length === 0) return;
+    li.className = "report-row";  // drops "unmet", so no red
+    const mark = li.querySelector(".mark");
+    mark.textContent = "\u2022";
+    mark.style.color = "var(--muted)";
+    li.querySelector(".report-text").textContent = "No usable frame: " +
+      ids.map((g) => g + " (" + state.unmetReasons[g] + ")").join(", ");
+  });
 }
 
 // POST /api/run with the current plan (no LLM call). Used on load and Re-plan.
@@ -186,6 +206,7 @@ async function runInstruction() {
 
 function render() {
   renderReport();
+  relabelCoverageRows();
   const grid = document.getElementById("grid");
   // Keep the scroll position across rebuilds (view toggle, re-plan, override).
   const scrollY = window.scrollY;

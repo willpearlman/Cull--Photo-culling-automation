@@ -29,6 +29,9 @@ MIN_FACE_WIDTH = float(os.getenv("MIN_FACE_WIDTH", "0.025"))
 MIN_SHARPNESS = float(os.getenv("MIN_SHARPNESS", "170"))
 # A gap longer than this between consecutive frames starts a new moment.
 MOMENT_GAP_SECONDS = float(os.getenv("MOMENT_GAP_SECONDS", "90"))
+# Coverage skips moments with fewer total frames than this (coverage rule's
+# "min_frames" overrides it per plan).
+COVERAGE_MIN_FRAMES = int(os.getenv("COVERAGE_MIN_FRAMES", "1"))
 
 LABEL_BY_TAG = {
     "group": "Green",
