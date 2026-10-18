@@ -253,3 +253,16 @@ body {
 }
 
 .tile:hover .overlay { transform: translateY(0); }
+
+/* Wide screens: fixed 6-column tile grid that fills the row. */
+@media (min-width: 1440px) {
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .tile {
+    width: auto;
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+}
