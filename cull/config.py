@@ -26,7 +26,7 @@ BEDROCK_TASTE_MODEL_ID = os.getenv("BEDROCK_TASTE_MODEL_ID", "")
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "6"))
 MIN_FACE_WIDTH = float(os.getenv("MIN_FACE_WIDTH", "0.025"))
-MIN_SHARPNESS = float(os.getenv("MIN_SHARPNESS", "150"))
+MIN_SHARPNESS = float(os.getenv("MIN_SHARPNESS", "50"))
 
 LABEL_BY_TAG = {
     "group": "Green",

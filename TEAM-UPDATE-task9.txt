@@ -1,0 +1,44 @@
+TEAM UPDATE: task 9 (rekog.py) + agreed shared changes
+From: Teammate 3 (AWS and logic lane). All three teammates agreed to these changes.
+
+WHAT CHANGED
+1. cull/rekog.py (new): Rekognition stage. Exposes run(images, cached) per the
+   Stage interface in .kiro/steering/contracts.md. Returns
+   {path: {face_count, eyes_closed_count, smile_count, scene_tags}}.
+   Uses only DetectFaces and DetectLabels (no face collections).
+   Quick test: python -m cull.rekog (reads config.SCORES_PATH, writes no files).
+
+2. Face filter (design.md updated): a face counts only if
+   BoundingBox.Width >= MIN_FACE_WIDTH (0.025) AND
+   BoundingBox.Width >= 0.25 x the largest face width in the same frame.
+   Reason: blurry background strangers were counted as faces, so a solo
+   portrait became face_count 3, lost the "portrait" tag, and was not eligible
+   for the taste.py intentional-eyes-closed rescue (requires face_count <= 2).
+
+3. MIN_SHARPNESS is now 50 (was 150) in cull/config.py, design.md, and
+   .env.example. Reason: 150 rejected sharp subjects with soft backgrounds
+   (example: DSC06279, sharpness 102.7). This value is used by rekog.py (skip
+   blurry frames) AND by solver.py DEFAULT_FILTER (top_n baseline), and
+   agent.py must copy it into plan filter rules. So fewer frames are rejected
+   as blurry overall.
+
+ACTION FOR EVERYONE (do this now)
+- git pull
+- Open your local .env (gitignored, not in the repo). Set MIN_SHARPNESS=50 or
+  delete the line. An old MIN_SHARPNESS=150 there overrides the new default.
+
+ACTION FOR WILL (pipeline lane)
+- When the rekog stage runs through pipeline.py, test with:
+  python -m cull.pipeline --stage rekog --limit 10
+- Do not change rekog.py; report problems to Teammate 3.
+
+ACTION FOR PARTNER (UI lane)
+- Nothing required. Fake data and the UI are unaffected.
+
+NOT CHANGED YET (open questions, Teammate 3 lane)
+- fixtures/preset_plans.json still hardcodes min_sharpness 150 and 200. The
+  server uses these presets when Bedrock fails, so those fallback plans still
+  reject frames between 50 and 150.
+- Frames with exactly 3 faces get no people tag (not portrait, couple, or group).
+- indoor/outdoor tags are often missing (labels like City, Urban, Room are not mapped).
+- detail tag misses objects like Paper, Text, Book.

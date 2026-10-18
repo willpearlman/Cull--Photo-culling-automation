@@ -41,7 +41,7 @@ is what lets three people build stages without touching each other's files.
 
 **rekog.py**
 - Resize preview to 1600px long edge, JPEG quality 85 (stays under the 5 MB byte limit).
-- `detect_faces(Image={"Bytes": b}, Attributes=["ALL"])`. Keep faces with `BoundingBox.Width >= MIN_FACE_WIDTH`. Eyes closed = `EyesOpen.Value is False and EyesOpen.Confidence >= 80`. Smile likewise.
+- `detect_faces(Image={"Bytes": b}, Attributes=["ALL"])`. Keep faces with `BoundingBox.Width >= MIN_FACE_WIDTH` and `>= 0.25 × the largest face width in the frame` (drops background bystanders). Eyes closed = `EyesOpen.Value is False and EyesOpen.Confidence >= 80`. Smile likewise.
 - `detect_labels(Image={"Bytes": b}, MaxLabels=25, MinConfidence=70)`. Map:
   - `group`: kept face_count >= 4, or labels Crowd, Audience, Team
   - `couple`: kept face_count == 2
@@ -50,7 +50,7 @@ is what lets three people build stages without touching each other's files.
   - `food`: Food, Meal, Dinner, Dish, Cake
   - `detail`: no faces and labels Flower, Jewelry, Decoration, Table Setting
   - `indoor` / `outdoor`: Indoors / Outdoors, Nature, Sky
-- Skip blurry frames (sharpness below 150) to save calls. They get face_count 0 and no tags.
+- Skip blurry frames (sharpness below `config.MIN_SHARPNESS`, default 50) to save calls. They get face_count 0 and no tags.
 
 **moments.py** (no API): sort by capture time. Primary tag = first of
 `group, couple, dance floor, food, detail, portrait`. Start a new moment when the
