@@ -10,6 +10,7 @@ from pathlib import Path
 
 import imagehash
 from exiftool import ExifToolHelper
+from exiftool.exceptions import ExifToolExecuteError
 from PIL import Image
 
 from . import config
@@ -19,6 +20,14 @@ log = logging.getLogger("cull.ingest")
 # New burst when the time gap exceeds this, or the phash distance exceeds PHASH_MAX.
 BURST_GAP_S = 2.0
 PHASH_MAX = 10
+
+# Files per exiftool execute call, and flags that silence warnings/minor errors.
+CHUNK = 100
+_QUIET = ["-q", "-q", "-m"]
+_META_TAGS = [
+    "DateTimeOriginal", "SubSecTimeOriginal", "Orientation",
+    "ExposureTime", "ISO", "FocalLength", "Model",
+]
 
 # ARW Orientation tag value -> degrees to rotate the preview counter-clockwise
 # so it ends up upright. Pillow rotate is counter-clockwise.
@@ -95,33 +104,38 @@ def run(images: list[dict], cached: dict) -> dict:
         log.info("ingest: nothing new (%d already cached)", len(cached))
         return {}
 
+    # Only extract previews that are missing; existing JPEGs would make
+    # exiftool emit "already exists" errors on stderr for every file.
+    need_preview = [p for p in todo if not (config.PREVIEW_DIR / f"{p.stem}.jpg").exists()]
+
+    meta_by_path: dict[Path, dict] = {}
     with ExifToolHelper() as et:
-        # One stay-open process extracts every preview to previews/%f.jpg.
-        et.execute(
-            "-b",
-            "-PreviewImage",
-            "-w",
-            str(config.PREVIEW_DIR / "%f.jpg"),
-            "-ext",
-            "ARW",
-            str(config.SHOOT_DIR),
-        )
-        meta = et.get_tags(
-            [str(p) for p in todo],
-            tags=[
-                "DateTimeOriginal",
-                "SubSecTimeOriginal",
-                "Orientation",
-                "ExposureTime",
-                "ISO",
-                "FocalLength",
-                "Model",
-            ],
-        )
+        # One stay-open process; small chunks plus -q -q -m keep stderr tiny so
+        # the pipe buffer never fills (PyExifTool deadlocks on Windows if it does).
+        for start in range(0, len(need_preview), CHUNK):
+            chunk = need_preview[start:start + CHUNK]
+            try:
+                et.execute(
+                    *_QUIET, "-b", "-PreviewImage",
+                    "-w", str(config.PREVIEW_DIR / "%f.jpg"),
+                    *[str(p) for p in chunk],
+                )
+            except ExifToolExecuteError as exc:  # e.g. a file with no preview
+                log.warning("ingest: preview chunk at %d had errors: %s", start, exc.stderr)
+            log.info("ingest: previews %d/%d", start + len(chunk), len(need_preview))
+
+        for start in range(0, len(todo), CHUNK):
+            chunk = todo[start:start + CHUNK]
+            for tags in et.get_tags([str(p) for p in chunk], tags=_META_TAGS, params=_QUIET):
+                src = tags.get("SourceFile")
+                if src:
+                    meta_by_path[Path(src).resolve()] = tags
+            log.info("ingest: %d/%d", start + len(chunk), len(todo))
 
     rows: dict[str, dict] = {}
     by_key: list[tuple[tuple[str, int], str, Path]] = []
-    for src, tags in zip(todo, meta):
+    for src in todo:
+        tags = meta_by_path.get(src.resolve(), {})
         rel = _rel(src)
         preview = config.PREVIEW_DIR / f"{src.stem}.jpg"
         if preview.exists():
