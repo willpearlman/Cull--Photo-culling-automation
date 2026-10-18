@@ -226,8 +226,13 @@ function render() {
     if (picked === 0) header.classList.add("zero");
     header.innerHTML =
       '<span class="label"></span><span class="count"></span>';
-    header.querySelector(".label").textContent = g.group_label || g.group_id;
-    header.querySelector(".count").textContent = picked === 1 ? "1 pick" : picked + " picks";
+    // "G001 · group, 11:39-11:49AM · 98 frames · 3 picks"; the pick count keeps
+    // its own muted styling in the .count span.
+    const frames = rowImages.length === 1 ? "1 frame" : rowImages.length + " frames";
+    header.querySelector(".label").textContent =
+      [g.group_id, g.group_label, frames].filter(Boolean).join(" \u00b7 ");
+    header.querySelector(".count").textContent =
+      "\u00b7 " + (picked === 1 ? "1 pick" : picked + " picks");
     row.appendChild(header);
 
     const strip = document.createElement("div");
