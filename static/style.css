@@ -7,6 +7,33 @@
   --muted: #9aa1ab;
   --pick: #3ec46d;
   --reject: #e0564f;
+  --warn: #e0a43a;
+}
+
+/* Live status bar, sits directly under the 48px top bar. */
+#statusbar {
+  position: sticky;
+  top: 48px;
+  z-index: 9;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+#statusbar.warn { border-bottom-color: var(--warn); }
+#statusbar.warn #sb-reason { color: var(--warn); }
+/* Reason takes the rest of the row and truncates to one line. */
+#sb-reason {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 * { box-sizing: border-box; }
@@ -72,7 +99,7 @@ body {
 #layout {
   display: flex;
   align-items: stretch;
-  min-height: calc(100vh - 48px);
+  min-height: calc(100vh - 76px);
 }
 
 /* Left panel reserved; controls land in a later task. */
@@ -82,7 +109,7 @@ body {
   background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 14px;
-  overflow-y: auto; position: sticky; top: 48px; height: calc(100vh - 48px); align-self: flex-start; box-sizing: border-box;
+  overflow-y: auto; position: sticky; top: 76px; height: calc(100vh - 76px); align-self: flex-start; box-sizing: border-box;
 }
 
 .panel-section { margin-bottom: 20px; }

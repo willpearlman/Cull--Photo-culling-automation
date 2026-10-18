@@ -35,7 +35,7 @@ async function exportSidecars() {
   btn.disabled = true;
   try {
     const data = await getJSON("/api/export", { picks: [...state.picks], decisions: state.decisions });
-    setStatus("Wrote " + (data.written ?? 0) + " sidecars");
+    setStatus("Wrote " + (data.written ?? 0) + " sidecars (" + state.picks.size + " picks)");
   } catch (err) {
     setStatus("error: " + err.message);
   } finally {
@@ -44,11 +44,42 @@ async function exportSidecars() {
 }
 
 function showSummary() {
+  // The persistent summary now lives in the status bar; keep #status free for
+  // transient messages (errors, export confirmations).
+  setStatus("");
+  renderStatusBar();
+}
+
+// Live status bar: picks, coverage, and whether every rule is met.
+function renderStatusBar() {
+  const bar = document.getElementById("statusbar");
   const picks = shownPicks();
-  const zero = state.groups.filter((g) =>
-    !state.images.some((i) => i.group_id === g.group_id && picks.has(i.path))).length;
   const name = state.view === "topn" ? "Top-N" : "Cull";
-  setStatus(name + ": " + picks.size + " picks, " + zero + " of " + state.groups.length + " moments with 0 picks");
+  const target = Number(state.plan.target) || 0;
+
+  const covered = state.groups.filter((g) =>
+    state.images.some((i) => i.group_id === g.group_id && picks.has(i.path))).length;
+
+  document.getElementById("sb-picks").textContent =
+    name + " \u00b7 " + picks.size + " / " + target + " picks";
+  document.getElementById("sb-moments").textContent =
+    covered + " / " + state.groups.length + " moments covered";
+
+  const reason = document.getElementById("sb-reason");
+  if (state.view === "topn") {
+    bar.classList.remove("warn");
+    reason.textContent = "Top-N baseline: score-and-cut, no rules";
+  } else {
+    const unmet = (state.report || []).filter((e) => e.met === false);
+    if (unmet.length) {
+      bar.classList.add("warn");
+      reason.textContent = "\u26a0 " + unmet.map((e) => e.detail).join(" | ");
+    } else {
+      bar.classList.remove("warn");
+      reason.textContent = "All rules met";
+    }
+  }
+  reason.title = reason.textContent;
 }
 
 function setSpinner(on) {
