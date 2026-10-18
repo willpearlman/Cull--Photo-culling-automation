@@ -1,4 +1,4 @@
-"""Local scoring stage: sharpness (Laplacian variance) and exposure clipping.
+"""Local scoring stage: sharpness (max per-tile Laplacian variance) and exposure clipping.
 
 Exposes run(images, cached) per contracts.md. Reads preview JPEGs only.
 """
@@ -15,6 +15,7 @@ log = logging.getLogger("cull.local_scores")
 
 LONG_EDGE = 1000
 CLIP_FRACTION = 0.05  # > 5% of pixels clipped flags under/over exposure
+TILES = 4  # sharpness = max Laplacian variance over a TILES x TILES grid
 
 
 def _resize_gray(path):
@@ -33,7 +34,14 @@ def _score(path) -> dict:
     gray = _resize_gray(path)
     if gray is None:
         return {"sharpness": None, "exposure_flags": [], "error": "preview unreadable"}
-    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    # Sharpest tile, not the whole frame: shallow-DOF portraits have smooth
+    # backgrounds that drag a whole-frame variance down even when the subject is sharp.
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    h, w = lap.shape
+    sharpness = max(
+        float(lap[r * h // TILES:(r + 1) * h // TILES, c * w // TILES:(c + 1) * w // TILES].var())
+        for r in range(TILES) for c in range(TILES)
+    )
     total = gray.size
     flags = []
     if np.count_nonzero(gray == 0) / total > CLIP_FRACTION:
