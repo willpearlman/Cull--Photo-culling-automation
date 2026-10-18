@@ -50,7 +50,7 @@ is what lets three people build stages without touching each other's files.
   - `food`: Food, Meal, Dinner, Dish, Cake
   - `detail`: no faces and labels Flower, Jewelry, Decoration, Table Setting
   - `indoor` / `outdoor`: Indoors / Outdoors, Nature, Sky
-- Skip blurry frames (sharpness below `config.MIN_SHARPNESS`, default 50) to save calls. They get face_count 0 and no tags.
+- Skip blurry frames (sharpness below `config.MIN_SHARPNESS`, default 170 on the max-tile scale) to save calls. They get face_count 0 and no tags.
 
 **moments.py** (no API): sort by capture time. Primary tag = first of
 `group, couple, dance floor, food, detail, portrait`. Start a new moment when the
