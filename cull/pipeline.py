@@ -87,16 +87,25 @@ def _load_run(stage: str):
     return getattr(module, "run", None)
 
 
-def _merged_rows(limit: int | None) -> list[dict]:
-    """Build the current merged image list from the ingest cache (the row source)."""
+def _merged_rows(limit: int | None, before: str | None = None) -> list[dict]:
+    """Build the current merged image list from the ingest cache (the row source).
+
+    Overlays every earlier stage's cache (merge order) so a stage sees fields
+    from the stages before it, e.g. rekog sees sharpness, taste sees faces.
+    """
     exif = _load_cache("ingest")
+    paths = sorted(exif)
+    if limit is not None:
+        paths = paths[:limit]
+    earlier = STAGE_ORDER[1:STAGE_ORDER.index(before)] if before in STAGE_ORDER else []
+    caches = [_load_cache(s) for s in earlier]
     rows = []
-    for path in sorted(exif):
+    for path in paths:
         row = {"path": path}
         row.update(exif[path])
+        for cache in caches:
+            row.update(cache.get(path) or {})
         rows.append(row)
-    if limit is not None:
-        rows = rows[:limit]
     return rows
 
 
@@ -107,7 +116,7 @@ def run_stage(stage: str, limit: int | None) -> None:
         return
 
     cached = _load_cache(stage)
-    images = _merged_rows(limit)
+    images = _merged_rows(limit, before=stage)
 
     # moments recomputes everything and ignores the cache.
     cached_arg = {} if stage == "moments" else cached
