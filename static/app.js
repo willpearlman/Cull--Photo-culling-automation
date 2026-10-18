@@ -1,6 +1,5 @@
-// Cull review grid. UI lane, task 5. Vanilla JS, no framework, no build step.
-// On load: GET /api/scores, then POST /api/run with DEFAULT_PLAN, render moments
-// as rows. Click a tile to cycle override (5 -> 1 -> null) and re-run the plan.
+// Cull review grid. UI lane. Vanilla JS, no framework, no build step.
+// Load scores, run DEFAULT_PLAN, render moments. Toggle Cull / Top-N baseline.
 
 // First plan from fixtures/preset_plans.json ("cull this shoot to about 30").
 const DEFAULT_PLAN = {
@@ -23,7 +22,9 @@ const state = {
   decisions: {},     // path -> {rating, label, reason}
   overrides: {},     // path -> 5 | 1 (local cycle tracking)
   report: [],        // [{type, met, detail}] from the latest run
-  explanation: ""    // text from the latest /api/plan
+  explanation: "",   // text from the latest /api/plan
+  view: "cull",      // "cull" | "topn"
+  baseline: new Set() // top-N paths from /api/baseline at the current target
 };
 
 // Find a rule of a given type in the current plan (or null).
@@ -58,6 +59,8 @@ function applyResult(result) {
 async function runPlan() {
   const data = await getJSON("/api/run", { plan: state.plan });
   applyResult(data.result);
+  document.getElementById("export-btn").disabled = false;
+  if (state.view === "topn") await loadBaseline();
 }
 
 function setStatus(text) {
@@ -78,13 +81,14 @@ async function cycleOverride(path) {
   else state.overrides[path] = rating;
   await runPlan();
   render();
+  showSummary();
 }
 
 function tileFor(img) {
   const tile = document.createElement("div");
   tile.className = "tile";
   const path = img.path;
-  if (state.picks.has(path)) tile.classList.add("picked");
+  if (shownPicks().has(path)) tile.classList.add("picked");
 
   const ov = state.overrides[path];
   if (ov === 5) tile.classList.add("ov-pick");
@@ -116,7 +120,11 @@ function tileFor(img) {
   const overlay = document.createElement("div");
   overlay.className = "overlay";
   const dec = state.decisions[path];
-  overlay.textContent = dec ? dec.reason : "";
+  if (state.view === "topn") {
+    overlay.textContent = state.baseline.has(path) ? "Kept: top-N baseline" : "Rejected: below top-N cut";
+  } else {
+    overlay.textContent = dec ? dec.reason : "";
+  }
   tile.appendChild(overlay);
 
   tile.addEventListener("click", () => cycleOverride(path));
@@ -149,7 +157,7 @@ async function replan() {
   try {
     await runPlan();
     render();
-    setStatus(state.groups.length + " moments, " + state.picks.size + " picks");
+    showSummary();
   } catch (err) {
     setStatus("error: " + err.message);
   } finally {
@@ -168,7 +176,7 @@ async function runInstruction() {
     applyResult(data.result);
     syncControlsFromPlan();
     render();
-    setStatus(state.groups.length + " moments, " + state.picks.size + " picks");
+    showSummary();
   } catch (err) {
     setStatus("error: " + err.message);
   } finally {
@@ -176,39 +184,18 @@ async function runInstruction() {
   }
 }
 
-function setSpinner(on) {
-  document.getElementById("spinner").hidden = !on;
-  document.getElementById("run-btn").disabled = on;
-  document.getElementById("replan-btn").disabled = on;
-}
-
-function renderReport() {
-  const list = document.getElementById("report");
-  list.innerHTML = "";
-  for (const entry of state.report) {
-    const li = document.createElement("li");
-    li.className = "report-row " + (entry.met ? "met" : "unmet");
-    const mark = document.createElement("span");
-    mark.className = "mark";
-    mark.textContent = entry.met ? "\u2713" : "\u2717";
-    const text = document.createElement("span");
-    text.className = "report-text";
-    text.textContent = entry.detail || entry.type;
-    li.appendChild(mark);
-    li.appendChild(text);
-    list.appendChild(li);
-  }
-  document.getElementById("explanation").textContent = state.explanation;
-}
-
 function render() {
   renderReport();
   const grid = document.getElementById("grid");
+  // Keep the scroll position across rebuilds (view toggle, re-plan, override).
+  const scrollY = window.scrollY;
+  const gridTop = grid.scrollTop;
   grid.innerHTML = "";
 
   for (const g of state.groups) {
     const rowImages = state.images.filter((i) => i.group_id === g.group_id);
-    const picked = rowImages.filter((i) => state.picks.has(i.path)).length;
+    const picks = shownPicks();
+    const picked = rowImages.filter((i) => picks.has(i.path)).length;
 
     const row = document.createElement("section");
     row.className = "moment";
@@ -219,7 +206,7 @@ function render() {
     header.innerHTML =
       '<span class="label"></span><span class="count"></span>';
     header.querySelector(".label").textContent = g.group_label || g.group_id;
-    header.querySelector(".count").textContent = picked + " picks";
+    header.querySelector(".count").textContent = picked === 1 ? "1 pick" : picked + " picks";
     row.appendChild(header);
 
     const strip = document.createElement("div");
@@ -229,6 +216,8 @@ function render() {
 
     grid.appendChild(row);
   }
+  grid.scrollTop = gridTop;
+  window.scrollTo(0, scrollY);
 }
 
 async function init() {
@@ -245,13 +234,16 @@ async function init() {
     syncControlsFromPlan();
     await runPlan();
     render();
-    setStatus(state.groups.length + " moments, " + state.picks.size + " picks");
+    showSummary();
   } catch (err) {
     setStatus("error: " + err.message);
   }
 
   document.getElementById("run-btn").addEventListener("click", runInstruction);
   document.getElementById("replan-btn").addEventListener("click", replan);
+  document.getElementById("export-btn").addEventListener("click", exportSidecars);
+  document.getElementById("view-cull").addEventListener("click", () => setView("cull"));
+  document.getElementById("view-topn").addEventListener("click", () => setView("topn"));
 }
 
 init();

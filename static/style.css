@@ -167,7 +167,21 @@ body {
 
 .moment-header .label { font-weight: 600; }
 .moment-header .count { color: var(--muted); font-size: 12px; }
+.moment-header.zero { border-bottom-color: var(--reject); }
+.moment-header.zero .label,
 .moment-header.zero .count { color: var(--reject); font-weight: 600; }
+
+.toggle { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.toggle button {
+  flex: 1 1 50%;
+  background: var(--bg);
+  color: var(--muted);
+  border: 0;
+  padding: 6px 0;
+  font: inherit;
+  cursor: pointer;
+}
+.toggle button.active { background: #2f6df0; color: #fff; }
 
 .strip {
   display: flex;

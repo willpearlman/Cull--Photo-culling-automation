@@ -21,6 +21,13 @@
     <!-- Left panel: plan controls and rule report. -->
     <aside id="leftpanel">
       <div class="panel-section">
+        <h3>View</h3>
+        <div id="view-toggle" class="toggle" role="group" aria-label="Picks view">
+          <button id="view-cull" type="button" class="active" aria-pressed="true">Cull</button>
+          <button id="view-topn" type="button" aria-pressed="false">Top-N</button>
+        </div>
+      </div>
+      <div class="panel-section">
         <h3>Plan</h3>
         <label class="field">target
           <input id="plan-target" type="number" min="0" step="1" />
@@ -46,6 +53,7 @@
     </main>
   </div>
 
+  <script src="views.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
