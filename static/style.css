@@ -82,7 +82,7 @@ body {
   background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 14px;
-  overflow-y: auto;
+  overflow-y: auto; position: sticky; top: 48px; height: calc(100vh - 48px); align-self: flex-start; box-sizing: border-box;
 }
 
 .panel-section { margin-bottom: 20px; }
