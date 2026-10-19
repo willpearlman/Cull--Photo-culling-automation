@@ -248,6 +248,10 @@ body {
 .tile.picked { border-color: var(--pick); }
 .tile.ov-pick { border-color: var(--pick); border-style: solid; }
 .tile.ov-reject { border-color: var(--reject); }
+/* Keyboard focus ring; the outline sits over the border so picked/override
+   colors stay visible underneath. scroll-margin clears the sticky bars. */
+.tile.focused { outline: 3px solid #fff; outline-offset: -3px; }
+.tile { scroll-margin-top: 90px; scroll-margin-bottom: 12px; }
 
 .grey {
   width: 100%;
@@ -291,3 +295,39 @@ body {
 }
 
 .tile:hover .overlay { transform: translateY(0); }
+
+.keyhint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* Full-resolution loupe overlay. */
+#loupe {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.92);
+}
+#loupe[hidden] { display: none; }
+#loupe-img {
+  max-width: 96vw;
+  max-height: 88vh;
+  object-fit: contain;
+}
+#loupe-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.6);
+  text-align: center;
+}

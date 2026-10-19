@@ -56,12 +56,18 @@
         <ul id="report" class="report"></ul>
         <p id="explanation" class="explanation"></p>
       </div>
+      <div class="panel-section">
+        <p class="keyhint">Keys: &larr;&rarr;&uarr;&darr; move &middot; P pick &middot; X reject &middot; U clear &middot; Space loupe &middot; Esc close &middot; Ctrl+Z undo</p>
+      </div>
     </aside>
 
     <main id="grid">
       <!-- Moments render as rows here. -->
     </main>
   </div>
+
+  <!-- Full-resolution single-frame overlay (Space to open). -->
+  <div id="loupe" hidden><img id="loupe-img" alt="" /><div id="loupe-info"></div></div>
 
   <script src="views.js"></script>
   <script src="app.js"></script>

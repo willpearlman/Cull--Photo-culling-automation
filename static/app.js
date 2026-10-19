@@ -29,7 +29,9 @@ const state = {
   cols: 6,           // grid columns from the Size slider (2..10)
   undoStack: [],     // override history, each {path, before, after}
   redoStack: [],     // entries undone, ready to reapply
-  busy: false        // lock: one override round-trip at a time
+  busy: false,       // lock: one override round-trip at a time
+  focusPath: null,   // path of the keyboard-focused tile (survives render)
+  loupeOpen: false   // full-res loupe overlay visible
 };
 
 // Find a rule of a given type in the current plan (or null).
@@ -118,6 +120,7 @@ async function setOverride(path, rating) {
   await runPlan();
   render();
   showSummary();
+  if (state.loupeOpen) updateLoupe();
 }
 
 function overrideLabel(rating) {
@@ -126,10 +129,11 @@ function overrideLabel(rating) {
   return "clear";
 }
 
-async function cycleOverride(path) {
-  if (state.busy) return;
+// Single override entry point for clicks and P/X/U keys. Records history.
+async function applyOverride(path, after) {
+  if (state.busy || !path) return;
   const before = state.overrides[path] ?? null;
-  const after = nextRating(before);
+  if (before === after) return;  // nothing to change, nothing to record
   state.busy = true;
   try {
     await setOverride(path, after);
@@ -141,6 +145,149 @@ async function cycleOverride(path) {
   } finally {
     state.busy = false;
   }
+}
+
+function cycleOverride(path) {
+  return applyOverride(path, nextRating(state.overrides[path] ?? null));
+}
+
+// --- Keyboard focus and navigation ---------------------------------------
+// focusPath is the single source of truth and is redrawn by render(). Arrow
+// keys move it; P/X/U act on it. Below the top bars (76px) is the visible area.
+const STICKY_OFFSET = 76;
+
+// Paths in display order: group order, then image order within each group.
+// Mirrors how render() lays out tiles, so Left/Right follow the screen.
+function orderedPaths() {
+  const out = [];
+  for (const g of state.groups) {
+    for (const img of state.images) {
+      if (img.group_id === g.group_id) out.push(img.path);
+    }
+  }
+  return out;
+}
+
+function tileEl(path) {
+  return document.querySelector('.tile[data-path="' + (window.CSS && CSS.escape ? CSS.escape(path) : path) + '"]');
+}
+
+// Move the white ring without a full render: just toggle the class and scroll.
+function setFocus(path) {
+  if (!path || path === state.focusPath) return;
+  const prev = state.focusPath && tileEl(state.focusPath);
+  if (prev) prev.classList.remove("focused");
+  state.focusPath = path;
+  const next = tileEl(path);
+  if (next) {
+    next.classList.add("focused");
+    next.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// First tile whose bottom edge is below the sticky bars (first one in view).
+function firstVisiblePath() {
+  for (const el of document.querySelectorAll(".tile[data-path]")) {
+    if (el.getBoundingClientRect().bottom > STICKY_OFFSET) return el.dataset.path;
+  }
+  const tiles = document.querySelectorAll(".tile[data-path]");
+  return tiles.length ? tiles[0].dataset.path : null;
+}
+
+function moveFocus(dir) {
+  if (!state.focusPath) {
+    setFocus(firstVisiblePath());
+    return;
+  }
+  if (dir === "left" || dir === "right") {
+    const order = orderedPaths();
+    const i = order.indexOf(state.focusPath);
+    if (i === -1) return;
+    const j = dir === "left" ? i - 1 : i + 1;
+    if (j >= 0 && j < order.length) setFocus(order[j]);
+    return;
+  }
+
+  // Up/Down by geometry: nearest row in that direction, then closest column.
+  const cur = tileEl(state.focusPath);
+  if (!cur) return;
+  const cr = cur.getBoundingClientRect();
+  const cx = cr.left + cr.width / 2;
+  const cy = cr.top + cr.height / 2;
+
+  let best = null;
+  for (const el of document.querySelectorAll(".tile[data-path]")) {
+    if (el === cur) continue;
+    const r = el.getBoundingClientRect();
+    const ey = r.top + r.height / 2;
+    const dy = ey - cy;
+    if (dir === "up" && dy >= 0) continue;
+    if (dir === "down" && dy <= 0) continue;
+    const ex = r.left + r.width / 2;
+    const cand = { path: el.dataset.path, vdist: Math.abs(dy), hdist: Math.abs(ex - cx) };
+    if (!best || cand.vdist < best.vdist - 1 ||
+        (Math.abs(cand.vdist - best.vdist) <= 1 && cand.hdist < best.hdist)) {
+      best = cand;
+    }
+  }
+  if (best) setFocus(best.path);
+}
+
+// --- Loupe (full-resolution single-frame view) ---------------------------
+function openLoupe() {
+  if (!state.focusPath) setFocus(firstVisiblePath());
+  if (!state.focusPath) return;
+  state.loupeOpen = true;
+  document.getElementById("loupe").hidden = false;
+  updateLoupe();
+}
+
+function updateLoupe() {
+  const path = state.focusPath;
+  if (!path) return;
+  const name = previewName(path);
+  document.getElementById("loupe-img").src = "/preview/" + encodeURIComponent(name);
+  document.getElementById("loupe-img").alt = name;
+
+  const img = state.images.find((i) => i.path === path) || {};
+  const picks = shownPicks();
+  const ov = state.overrides[path];
+  const ovText = ov === 5 ? "PICK" : ov === 1 ? "REJECT" : "none";
+  const dec = state.decisions[path];
+  const parts = [
+    name,
+    (img.group_id || "") + (img.group_label ? " " + img.group_label : ""),
+    picks.has(path) ? "PICKED" : "not picked",
+    "override: " + ovText,
+    (dec && dec.reason) || "",
+  ].filter(Boolean);
+  document.getElementById("loupe-info").textContent = parts.join(" \u00b7 ");
+}
+
+function closeLoupe() {
+  state.loupeOpen = false;
+  document.getElementById("loupe").hidden = true;
+  // Loupe stepping moves focusPath without touching tiles; resync the ring.
+  for (const t of document.querySelectorAll(".tile.focused")) t.classList.remove("focused");
+  const el = state.focusPath && tileEl(state.focusPath);
+  if (el) el.classList.add("focused");
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+function toggleLoupe() {
+  if (state.loupeOpen) closeLoupe();
+  else openLoupe();
+}
+
+// In the loupe, Left/Right step to the previous/next frame in display order.
+function loupeStep(dir) {
+  const order = orderedPaths();
+  const i = order.indexOf(state.focusPath);
+  if (i === -1) return;
+  const j = dir === "left" ? i - 1 : i + 1;
+  if (j < 0 || j >= order.length) return;
+  state.focusPath = order[j];
+  updateLoupe();
 }
 
 async function undo() {
@@ -175,20 +322,69 @@ async function redo() {
   }
 }
 
-// Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo. Skip when a text field is
-// focused so the browser's own text undo still works in the instruction box.
+// Keyboard culling. Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo; arrows
+// move focus (step frames in the loupe); P/X/U pick/reject/clear the focused
+// tile; Space toggles the loupe; Esc closes it. Skipped entirely when a text
+// field is focused so native text editing and its undo still work.
 function onKeydown(e) {
   const el = document.activeElement;
   const tag = el ? el.tagName : "";
   if (tag === "TEXTAREA" || tag === "INPUT" || (el && el.isContentEditable)) return;
-  if (!(e.ctrlKey || e.metaKey)) return;
   const key = (e.key || "").toLowerCase();
-  if (key === "z" && !e.shiftKey) {
-    e.preventDefault();
-    undo();
-  } else if ((key === "z" && e.shiftKey) || key === "y") {
-    e.preventDefault();
-    redo();
+
+  // Ctrl/Cmd+Z and redo come first, before the plain-key culling handlers.
+  if (e.ctrlKey || e.metaKey) {
+    if (key === "z" && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+    } else if ((key === "z" && e.shiftKey) || key === "y") {
+      e.preventDefault();
+      redo();
+    }
+    return;
+  }
+  // Leave Alt combos (and any remaining modifier combos) to the browser.
+  if (e.altKey) return;
+
+  // Plain-key culling and navigation.
+  switch (e.key) {
+    case "ArrowLeft":
+      e.preventDefault();
+      state.loupeOpen ? loupeStep("left") : moveFocus("left");
+      break;
+    case "ArrowRight":
+      e.preventDefault();
+      state.loupeOpen ? loupeStep("right") : moveFocus("right");
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      if (!state.loupeOpen) moveFocus("up");
+      break;
+    case "ArrowDown":
+      e.preventDefault();
+      if (!state.loupeOpen) moveFocus("down");
+      break;
+    case " ":
+      e.preventDefault();
+      toggleLoupe();
+      break;
+    case "Escape":
+      if (state.loupeOpen) {
+        e.preventDefault();
+        closeLoupe();
+      }
+      break;
+    default:
+      if (key === "p") {
+        e.preventDefault();
+        if (state.focusPath) applyOverride(state.focusPath, 5);
+      } else if (key === "x") {
+        e.preventDefault();
+        if (state.focusPath) applyOverride(state.focusPath, 1);
+      } else if (key === "u") {
+        e.preventDefault();
+        if (state.focusPath) applyOverride(state.focusPath, null);
+      }
   }
 }
 
@@ -204,11 +400,19 @@ function imageSrc(name) {
   return (useFullPreview() ? "/preview/" : "/thumb/") + encodeURIComponent(name);
 }
 
+// Preview filename for a path, the same rule tileFor uses for its <img>.
+function previewName(path) {
+  const img = state.images.find((i) => i.path === path);
+  return (img && (basename(img.preview) || basename(img.path))) || basename(path);
+}
+
 function tileFor(img) {
   const tile = document.createElement("div");
   tile.className = "tile";
   const path = img.path;
+  tile.dataset.path = path;
   if (shownPicks().has(path)) tile.classList.add("picked");
+  if (path === state.focusPath) tile.classList.add("focused");
 
   const ov = state.overrides[path];
   if (ov === 5) tile.classList.add("ov-pick");
@@ -248,7 +452,10 @@ function tileFor(img) {
   }
   tile.appendChild(overlay);
 
-  tile.addEventListener("click", () => cycleOverride(path));
+  tile.addEventListener("click", () => {
+    state.focusPath = path;  // click focuses before cycling the override
+    cycleOverride(path);
+  });
   return tile;
 }
 
@@ -418,6 +625,11 @@ async function init() {
   document.getElementById("view-cull").addEventListener("click", () => setView("cull"));
   document.getElementById("view-topn").addEventListener("click", () => setView("topn"));
   document.addEventListener("keydown", onKeydown);
+
+  // Clicking the loupe backdrop (not the image) closes it.
+  document.getElementById("loupe").addEventListener("click", (e) => {
+    if (e.target.id !== "loupe-img") closeLoupe();
+  });
 }
 
 init();
