@@ -31,8 +31,125 @@ const state = {
   redoStack: [],     // entries undone, ready to reapply
   busy: false,       // lock: one override round-trip at a time
   focusPath: null,   // path of the keyboard-focused tile (survives render)
-  loupeOpen: false   // full-res loupe overlay visible
+  loupeOpen: false,  // full-res loupe overlay visible
+  // View filter: narrows which tiles render. Never touches the status bar,
+  // orderedPaths honors it, so navigation and the loupe only visit shown tiles.
+  filter: { status: "all", issues: new Set(), tags: new Set() }
 };
+
+// --- View filter ---------------------------------------------------------
+function blurThreshold() {
+  return findRule("filter")?.min_sharpness ?? 170;
+}
+
+function hasIssue(img, issue) {
+  if (issue === "blink") return (img.eyes_closed_count || 0) > 0;
+  if (issue === "blur") return img.sharpness !== null && img.sharpness !== undefined
+    && img.sharpness < blurThreshold();
+  if (issue === "exposure") return (img.exposure_flags || []).length > 0;
+  return false;
+}
+
+function filterIsClear() {
+  const f = state.filter;
+  return f.status === "all" && f.issues.size === 0 && f.tags.size === 0;
+}
+
+function matchesFilter(img) {
+  const f = state.filter;
+  if (f.status === "picks" && !shownPicks().has(img.path)) return false;
+  if (f.status === "notpicked" && shownPicks().has(img.path)) return false;
+  if (f.issues.size && ![...f.issues].some((i) => hasIssue(img, i))) return false;
+  if (f.tags.size) {
+    const tags = img.scene_tags || [];
+    if (![...f.tags].some((t) => tags.includes(t))) return false;
+  }
+  return true;
+}
+
+// Build tag chips (one per tag present, by count desc) and wire every chip.
+// Chip changes only re-render the grid and status bar; no server calls.
+function initFilterChips() {
+  const tagCounts = {};
+  for (const img of state.images) {
+    for (const t of img.scene_tags || []) tagCounts[t] = (tagCounts[t] || 0) + 1;
+  }
+  const tagBox = document.getElementById("filter-tags");
+  tagBox.innerHTML = "";
+  for (const [tag] of Object.entries(tagCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.dataset.tag = tag;
+    btn.setAttribute("aria-pressed", "false");
+    btn.innerHTML = tag + ' <span class="chip-n" data-tagcount="' + tag + '">0</span>';
+    tagBox.appendChild(btn);
+  }
+
+  const afterChange = (btn) => {
+    render();
+    renderStatusBar();
+    btn.blur();  // hand keyboard focus back to the grid for arrows and P/X/U
+  };
+
+  document.getElementById("filter-status").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-status]");
+    if (!btn) return;
+    state.filter.status = btn.dataset.status;
+    afterChange(btn);
+  });
+  const toggleSet = (set, key, btn) => {
+    if (set.has(key)) set.delete(key);
+    else set.add(key);
+    afterChange(btn);
+  };
+  document.getElementById("filter-issues").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-issue]");
+    if (btn) toggleSet(state.filter.issues, btn.dataset.issue, btn);
+  });
+  tagBox.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-tag]");
+    if (btn) toggleSet(state.filter.tags, btn.dataset.tag, btn);
+  });
+  document.getElementById("filter-clear").addEventListener("click", (e) => {
+    state.filter.status = "all";
+    state.filter.issues.clear();
+    state.filter.tags.clear();
+    afterChange(e.target);
+  });
+}
+
+// Reflect filter state into the chips and the "Showing n of total" line.
+// Issue/tag counts are over the FULL set, independent of the active filter.
+function updateFilterUI(shownTotal) {
+  const f = state.filter;
+  for (const btn of document.querySelectorAll("#filter-status button[data-status]")) {
+    const on = btn.dataset.status === f.status;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", String(on));
+  }
+  for (const btn of document.querySelectorAll("#filter-issues button[data-issue]")) {
+    const on = f.issues.has(btn.dataset.issue);
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", String(on));
+  }
+  for (const btn of document.querySelectorAll("#filter-tags button[data-tag]")) {
+    const on = f.tags.has(btn.dataset.tag);
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", String(on));
+  }
+  // Live counts over the full image set.
+  for (const issue of ["blink", "blur", "exposure"]) {
+    const el = document.querySelector('[data-count="' + issue + '"]');
+    if (el) el.textContent = state.images.filter((i) => hasIssue(i, issue)).length;
+  }
+  for (const el of document.querySelectorAll("[data-tagcount]")) {
+    const tag = el.dataset.tagcount;
+    el.textContent = state.images.filter((i) => (i.scene_tags || []).includes(tag)).length;
+  }
+  const line = document.getElementById("filter-count");
+  if (line) line.textContent = "Showing " + shownTotal + " of " + state.images.length + " frames";
+}
 
 // Find a rule of a given type in the current plan (or null).
 function findRule(type) {
@@ -129,22 +246,49 @@ function overrideLabel(rating) {
   return "clear";
 }
 
+// Path at `index` in `order`, clamped to the last entry, or null if empty.
+function pathAtIndex(order, index) {
+  if (order.length === 0) return null;
+  return order[Math.min(index, order.length - 1)];
+}
+
 // Single override entry point for clicks and P/X/U keys. Records history.
 async function applyOverride(path, after) {
   if (state.busy || !path) return;
   const before = state.overrides[path] ?? null;
   if (before === after) return;  // nothing to change, nothing to record
+  // Remember where the focus sat in the filtered list; the Picks/Not-picked
+  // filter can drop this frame once its pick state flips.
+  const prevOrder = orderedPaths();
+  const prevIndex = prevOrder.indexOf(state.focusPath);
   state.busy = true;
   try {
-    await setOverride(path, after);
+    await setOverride(path, after);  // runs render(); focus class is reapplied below
     state.undoStack.push({ path, before, after });
     if (state.undoStack.length > UNDO_LIMIT) state.undoStack.shift();
     state.redoStack = [];
+    // If the focused frame no longer matches, land on the frame now at the
+    // same index (or the last one), so the ring follows the cull.
+    if (state.focusPath && !matchesFilter(imageFor(state.focusPath))) {
+      const next = prevIndex === -1 ? firstVisiblePath()
+        : pathAtIndex(orderedPaths(), prevIndex);
+      state.focusPath = next;
+      if (state.loupeOpen) updateLoupe();
+      const el = next && tileEl(next);
+      if (el) {
+        el.classList.add("focused");
+        el.scrollIntoView({ block: "nearest" });
+      }
+    }
   } catch (err) {
     setStatus("error: " + err.message);
   } finally {
     state.busy = false;
   }
+}
+
+function imageFor(path) {
+  return state.images.find((i) => i.path === path) || {};
 }
 
 function cycleOverride(path) {
@@ -162,7 +306,7 @@ function orderedPaths() {
   const out = [];
   for (const g of state.groups) {
     for (const img of state.images) {
-      if (img.group_id === g.group_id) out.push(img.path);
+      if (img.group_id === g.group_id && matchesFilter(img)) out.push(img.path);
     }
   }
   return out;
@@ -195,7 +339,8 @@ function firstVisiblePath() {
 }
 
 function moveFocus(dir) {
-  if (!state.focusPath) {
+  // If the focused tile was filtered out of the DOM, start fresh from the top.
+  if (!state.focusPath || !tileEl(state.focusPath)) {
     setFocus(firstVisiblePath());
     return;
   }
@@ -521,10 +666,18 @@ function render() {
   const gridTop = grid.scrollTop;
   grid.innerHTML = "";
 
+  const active = !filterIsClear();
+  let shownTotal = 0;
   for (const g of state.groups) {
     const rowImages = state.images.filter((i) => i.group_id === g.group_id);
+    const shownImages = active ? rowImages.filter(matchesFilter) : rowImages;
+    shownTotal += shownImages.length;
+    // Hide a moment that has no matching frame, but never when the filter is
+    // fully cleared (then an empty moment still shows, as before).
+    if (active && shownImages.length === 0) continue;
+
     const picks = shownPicks();
-    const picked = rowImages.filter((i) => picks.has(i.path)).length;
+    const picked = rowImages.filter((i) => picks.has(i.path)).length;  // all picks, not just shown
 
     const row = document.createElement("section");
     row.className = "moment";
@@ -534,9 +687,11 @@ function render() {
     if (picked === 0) header.classList.add("zero");
     header.innerHTML =
       '<span class="label"></span><span class="count"></span>';
-    // "G001 · group, 11:39-11:49AM · 98 frames · 3 picks"; the pick count keeps
-    // its own muted styling in the .count span.
-    const frames = rowImages.length === 1 ? "1 frame" : rowImages.length + " frames";
+    // "G001 · group, 11:39-11:49AM · 98 frames · 3 picks"; with a filter active
+    // the frame count becomes "<shown> of <total> frames".
+    const frames = active
+      ? shownImages.length + " of " + rowImages.length + " frames"
+      : (rowImages.length === 1 ? "1 frame" : rowImages.length + " frames");
     header.querySelector(".label").textContent =
       [g.group_id, g.group_label, frames].filter(Boolean).join(" \u00b7 ");
     header.querySelector(".count").textContent =
@@ -545,13 +700,14 @@ function render() {
 
     const strip = document.createElement("div");
     strip.className = "strip";
-    for (const img of rowImages) strip.appendChild(tileFor(img));
+    for (const img of shownImages) strip.appendChild(tileFor(img));
     row.appendChild(strip);
 
     grid.appendChild(row);
   }
   grid.scrollTop = gridTop;
   window.scrollTo(0, scrollY);
+  updateFilterUI(shownTotal);
 }
 
 // Size slider: sets --cols on #grid and remembers the last column count.
@@ -612,6 +768,7 @@ async function init() {
       }
     }
     syncControlsFromPlan();
+    initFilterChips();
     await runPlan();
     render();
     showSummary();

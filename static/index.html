@@ -38,6 +38,24 @@
         </div>
       </div>
       <div class="panel-section">
+        <div class="filter-head">
+          <h3>Filter</h3>
+          <button id="filter-clear" type="button" class="link">Clear</button>
+        </div>
+        <div id="filter-status" class="chips" role="group" aria-label="Status filter">
+          <button type="button" class="chip on" data-status="all" aria-pressed="true">All</button>
+          <button type="button" class="chip" data-status="picks" aria-pressed="false">Picks</button>
+          <button type="button" class="chip" data-status="notpicked" aria-pressed="false">Not picked</button>
+        </div>
+        <div id="filter-issues" class="chips" role="group" aria-label="Issue filter">
+          <button type="button" class="chip" data-issue="blink" aria-pressed="false">Blink <span class="chip-n" data-count="blink">0</span></button>
+          <button type="button" class="chip" data-issue="blur" aria-pressed="false">Blur <span class="chip-n" data-count="blur">0</span></button>
+          <button type="button" class="chip" data-issue="exposure" aria-pressed="false">Exposure <span class="chip-n" data-count="exposure">0</span></button>
+        </div>
+        <div id="filter-tags" class="chips" role="group" aria-label="Tag filter"></div>
+        <p id="filter-count" class="filter-count"></p>
+      </div>
+      <div class="panel-section">
         <h3>Plan</h3>
         <label class="field">target
           <input id="plan-target" type="number" min="0" step="1" />
