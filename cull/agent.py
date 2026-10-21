@@ -1,8 +1,13 @@
-"""Instruction -> plan agent. AWS and logic lane (Teammate 3), task 10.
+"""Instruction -> plan agent.
 
-make_plan(instruction, images): one Bedrock Converse call with a forced submit_plan tool.
+make_plan(instruction, images): one LLM call that returns a plan as structured JSON.
 explain(plan, result): one short call summarising the result in 2 to 3 sentences.
 Plan shape: .kiro/steering/contracts.md.
+
+Providers (config.LLM_PROVIDER):
+- anthropic: Anthropic API, key from ANTHROPIC_API_KEY.
+- presets: no LLM. Both calls raise ProviderUnavailable and the server uses
+  fixtures/preset_plans.json instead.
 """
 import copy
 import json
@@ -10,9 +15,6 @@ import re
 import sys
 import threading
 from collections import Counter
-
-import boto3
-from botocore.config import Config
 
 from cull import config
 
@@ -22,6 +24,25 @@ TAG_VOCAB = ["group", "couple", "candid", "dance floor", "food", "indoor", "outd
 RULE_TYPES = ["filter", "dedupe_bursts", "coverage", "cap", "prefer"]
 # Words that mean the user is asking about the sharpness threshold itself.
 SHARPNESS_WORDS = re.compile(r"sharp|blur|focus|soft|crisp", re.IGNORECASE)
+# Models that accept the server-side refusal fallback (fallbacks: "default").
+_FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1"}
+
+
+class ProviderUnavailable(RuntimeError):
+    """No LLM is configured, or the call could not produce a usable answer."""
+
+
+def _rule(rtype, **fields):
+    """One rule variant for structured outputs: every field required, nothing extra."""
+    return {
+        "type": "object",
+        "properties": {"type": {"type": "string", "const": rtype}, **fields},
+        "required": ["type", *fields],
+        "additionalProperties": False,
+    }
+
+
+_GROUP_BY = {"type": "string", "enum": ["group_id"]}
 
 PLAN_SCHEMA = {
     "type": "object",
@@ -29,32 +50,27 @@ PLAN_SCHEMA = {
         "target": {"type": "integer", "description": "Number of frames to keep."},
         "rules": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "enum": RULE_TYPES},
-                    "max_eyes_closed": {"type": "integer", "description": "filter"},
-                    "allow_intentional": {"type": "boolean", "description": "filter"},
-                    "min_sharpness": {"type": "number", "description": "filter"},
-                    "drop_exposure_flags": {"type": "boolean", "description": "filter"},
-                    "keep": {"type": "integer", "description": "dedupe_bursts"},
-                    "by": {"type": "string", "enum": ["group_id"],
-                           "description": "coverage and cap"},
-                    "min_per_group": {"type": "integer", "description": "coverage"},
-                    "max_per_group": {"type": "integer", "description": "cap"},
-                    "tags": {"type": "array", "items": {"type": "string", "enum": TAG_VOCAB},
-                             "description": "prefer"},
-                    "weight": {"type": "number", "description": "prefer"},
-                },
-                "required": ["type"],
-            },
+            "items": {"anyOf": [
+                _rule("filter",
+                      max_eyes_closed={"type": "integer"},
+                      allow_intentional={"type": "boolean"},
+                      min_sharpness={"type": "number"},
+                      drop_exposure_flags={"type": "boolean"}),
+                _rule("dedupe_bursts", keep={"type": "integer"}),
+                _rule("coverage", by=_GROUP_BY, min_per_group={"type": "integer"}),
+                _rule("cap", by=_GROUP_BY, max_per_group={"type": "integer"}),
+                _rule("prefer",
+                      tags={"type": "array", "items": {"type": "string", "enum": TAG_VOCAB}},
+                      weight={"type": "number"}),
+            ]},
         },
     },
     "required": ["target", "rules"],
+    "additionalProperties": False,
 }
 
 SYSTEM_TEMPLATE = """You turn a photographer's culling instruction into a plan for a rule solver.
-Always answer by calling submit_plan exactly once. Never ask questions.
+Answer with the plan JSON only. Never ask questions.
 
 Plan = {{"target": int, "rules": [rule, ...]}}. Rule types (use only these):
 - filter: max_eyes_closed (int, faces allowed with eyes closed, 0 = no blinks),
@@ -85,14 +101,31 @@ _client = None
 _client_lock = threading.Lock()
 
 
-def _bedrock():
+def _anthropic():
+    """One shared client. Imported lazily so the presets provider needs no SDK."""
     global _client
     with _client_lock:
         if _client is None:
-            _client = boto3.client(
-                "bedrock-runtime", region_name=config.AWS_REGION,
-                config=Config(retries={"mode": "adaptive", "max_attempts": 6}))
+            import anthropic
+            _client = anthropic.Anthropic(timeout=60.0, max_retries=2)
     return _client
+
+
+def _create(max_tokens, **kwargs):
+    """One Messages call on the configured provider. Returns the reply text."""
+    if config.LLM_PROVIDER != "anthropic":
+        raise ProviderUnavailable(f"LLM_PROVIDER={config.LLM_PROVIDER!r}")
+    model = config.ANTHROPIC_AGENT_MODEL
+    extra = {}
+    if model in _FALLBACK_MODELS:
+        # On a safety decline the API re-runs the request on a fallback model.
+        extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
+    output_config = {"effort": config.ANTHROPIC_EFFORT, **kwargs.pop("output_config", {})}
+    resp = _anthropic().beta.messages.create(
+        model=model, max_tokens=max_tokens, output_config=output_config, **extra, **kwargs)
+    if resp.stop_reason in ("refusal", "max_tokens"):
+        raise ProviderUnavailable(f"stop_reason={resp.stop_reason}")
+    return "".join(b.text for b in resp.content if b.type == "text").strip()
 
 
 def _defaults():
@@ -169,32 +202,21 @@ def validate(raw, images, instruction=""):
     return {"target": max(1, min(target, len(images))), "rules": rules}
 
 
-def _converse(**kwargs):
-    if not config.BEDROCK_AGENT_MODEL_ID:
-        raise RuntimeError("BEDROCK_AGENT_MODEL_ID is not set")
-    return _bedrock().converse(modelId=config.BEDROCK_AGENT_MODEL_ID, **kwargs)
-
-
 def make_plan(instruction, images):
     if not images:
         raise ValueError("cannot create a culling plan without images")
     system = SYSTEM_TEMPLATE.format(min_sharp=config.MIN_SHARPNESS, tags=", ".join(TAG_VOCAB),
                                     summary=shoot_summary(images))
-    resp = _converse(
-        system=[{"text": system}],
-        messages=[{"role": "user", "content": [{"text": instruction}]}],
-        toolConfig={
-            "tools": [{"toolSpec": {"name": "submit_plan",
-                                    "description": "Submit the culling plan for the solver.",
-                                    "inputSchema": {"json": PLAN_SCHEMA}}}],
-            "toolChoice": {"tool": {"name": "submit_plan"}},
-        },
-        inferenceConfig={"maxTokens": 800},
+    text = _create(
+        max_tokens=8000,
+        system=system,
+        messages=[{"role": "user", "content": instruction}],
+        output_config={"format": {"type": "json_schema", "schema": PLAN_SCHEMA}},
     )
-    content = resp["output"]["message"]["content"]
-    raw = next((c["toolUse"]["input"] for c in content if "toolUse" in c), None)
-    if raw is None:
-        raise RuntimeError("model did not call submit_plan")
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ProviderUnavailable("model reply was not plan JSON") from exc
     return validate(raw, images, instruction)
 
 
@@ -230,10 +252,7 @@ def explain(plan, result):
               "Plain text, no preamble.\n"
               f"Plan: {json.dumps(plan)}\nPicks: {len(result.get('picks', []))}\n"
               f"Report: {json.dumps(report)}\nUnmet moments: {result.get('unmet_groups', [])}")
-    resp = _converse(messages=[{"role": "user", "content": [{"text": prompt}]}],
-                     inferenceConfig={"maxTokens": 120})
-    parts = resp["output"]["message"]["content"]
-    text = " ".join(p["text"] for p in parts if "text" in p).strip()
+    text = _create(max_tokens=4000, messages=[{"role": "user", "content": prompt}])
     return text if _valid_explanation(text, result) else _fallback_explanation(plan, result)
 
 

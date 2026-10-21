@@ -20,6 +20,14 @@ SCORES_PATH = (REPO_ROOT / _scores).resolve() if _scores and not Path(_scores).i
 # Overrides live beside scores.json, never inside it, so fixtures stay clean.
 OVERRIDES_PATH = SCORES_PATH.with_name(SCORES_PATH.stem + ".overrides.json")
 
+# Instruction agent: "anthropic" or "presets". Unset means anthropic when a key is present.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER") or ("anthropic" if os.getenv("ANTHROPIC_API_KEY")
+                                             else "presets")
+ANTHROPIC_AGENT_MODEL = os.getenv("ANTHROPIC_AGENT_MODEL", "claude-opus-5-5")
+# low | medium | high | xhigh | max. Plans are a short translation task.
+ANTHROPIC_EFFORT = os.getenv("ANTHROPIC_EFFORT", "low")
+
+# AWS is used only by the rekog and taste stages until local replacements land.
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BEDROCK_AGENT_MODEL_ID = os.getenv("BEDROCK_AGENT_MODEL_ID", "")
 BEDROCK_TASTE_MODEL_ID = os.getenv("BEDROCK_TASTE_MODEL_ID", "")
