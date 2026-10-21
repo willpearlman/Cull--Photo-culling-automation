@@ -23,6 +23,8 @@ log = logging.getLogger("cull.pipeline")
 STAGES = [
     ("ingest", "cull.ingest", "exif.json"),
     ("local", "cull.local_scores", "local.json"),
+    # faces fills the same fields as rekog. rekog overlays it until it is removed.
+    ("faces", "cull.faces", "faces.json"),
     ("rekog", "cull.rekog", "rekog.json"),
     ("moments", "cull.moments", "moments.json"),
     ("taste", "cull.taste", "taste.json"),

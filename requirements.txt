@@ -8,3 +8,10 @@ opencv-python-headless>=4.10
 imagehash>=4.3
 Pillow>=10.4
 pytest>=8.0
+# Local faces stage. Install mediapipe itself without its dependency list:
+#   pip install --no-deps mediapipe==1.1.1
+# Its list adds opencv-contrib-python, which overwrites opencv-python-headless (same cv2 folder).
+absl-py>=2.0
+flatbuffers>=24.0
+certifi
+matplotlib>=3.8
