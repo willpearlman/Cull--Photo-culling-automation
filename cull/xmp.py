@@ -23,7 +23,9 @@ def _write_one(et: ExifToolHelper, image: dict, rating, label) -> None:
     args = [f"-XMP-xmp:Rating={rating}"]
     # Empty label clears it; Lightroom default label set otherwise.
     args.append(f"-XMP-xmp:Label={label or ''}")
+    # Remove then add, so re-exporting never duplicates a keyword.
     for tag in image.get("scene_tags") or []:
+        args.append(f"-XMP-dc:Subject-={tag}")
         args.append(f"-XMP-dc:Subject+={tag}")
     args.append("-overwrite_original")
     args.append(str(_xmp_path(image["path"])))
