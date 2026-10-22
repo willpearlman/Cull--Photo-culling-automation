@@ -13,6 +13,7 @@
     <textarea id="instruction" rows="1" placeholder="e.g. cull this shoot to about 30"></textarea>
     <button id="run-btn" type="button">Run</button>
     <button id="export-btn" type="button" disabled>Export</button>
+    <button id="lr-mode" type="button" class="link" title="Which Lightroom you use"></button>
     <span id="spinner" class="spinner" hidden></span>
     <span id="status" class="status">loading…</span>
     <label class="tile-size">Size
@@ -88,6 +89,31 @@
     <main id="grid">
       <!-- Moments render as rows here. -->
     </main>
+  </div>
+
+  <!-- First-launch setup: which Lightroom the photographer uses. -->
+  <div id="setup" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+      <h2 id="setup-title">Which Lightroom do you use?</h2>
+      <p class="muted">Cull writes ratings into sidecar files next to your RAWs. Each Lightroom
+        picks them up at a different point, so this decides when to run Cull.</p>
+      <div id="setup-options" class="setup-options"></div>
+      <p id="setup-hint" class="muted small" hidden>Press Esc to keep the current choice.</p>
+    </div>
+  </div>
+
+  <!-- Export guide: what to do before writing sidecars, then the Lightroom steps after. -->
+  <div id="guide" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+      <h2 id="guide-title"></h2>
+      <p id="guide-lead"></p>
+      <h3 id="guide-steps-head"></h3>
+      <ol id="guide-steps" class="guide-steps"></ol>
+      <div class="dialog-actions">
+        <button id="guide-close" type="button" class="secondary">Cancel</button>
+        <button id="guide-write" type="button">Write sidecars</button>
+      </div>
+    </div>
   </div>
 
   <!-- Full-resolution single-frame overlay (Space to open). -->

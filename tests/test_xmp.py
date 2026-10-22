@@ -27,6 +27,19 @@ def test_reexport_keeps_one_copy_of_each_keyword(tmp_path, monkeypatch):
         assert sorted(_subjects(et, tmp_path / "A.xmp")) == ["candid", "group"]
 
 
+def test_reexport_drops_stale_cull_keywords_but_keeps_the_users(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "SHOOT_DIR", tmp_path)
+    from exiftool import ExifToolHelper
+    with ExifToolHelper() as et:
+        # An earlier export tagged portrait and group; the user added their own keyword.
+        et.execute("-XMP-dc:Subject+=portrait", "-XMP-dc:Subject+=group",
+                   "-XMP-dc:Subject+=Smith wedding", str(tmp_path / "C.xmp"))
+    image = {"path": "shoot/C.ARW", "scene_tags": ["couple", "ceremony"]}
+    xmp.export({"shoot/C.ARW": {"rating": 5, "label": None, "reason": "Kept"}}, [image])
+    with ExifToolHelper() as et:
+        assert sorted(_subjects(et, tmp_path / "C.xmp")) == ["Smith wedding", "ceremony", "couple"]
+
+
 def test_reexport_collapses_existing_duplicates(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "SHOOT_DIR", tmp_path)
     from exiftool import ExifToolHelper

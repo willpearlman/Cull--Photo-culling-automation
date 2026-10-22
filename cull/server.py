@@ -158,17 +158,36 @@ def api_override(body: dict):
     return {"ok": True}
 
 
+@app.get("/api/settings")
+def api_settings():
+    from cull import lightroom, settings
+    current = settings.load()
+    return {**current, "guide": lightroom.guide(current["lightroom"]), "modes": lightroom.MODES}
+
+
+@app.post("/api/settings")
+def api_settings_update(body: dict):
+    from cull import lightroom, settings
+    try:
+        current = settings.update(body or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {**current, "guide": lightroom.guide(current["lightroom"]), "modes": lightroom.MODES}
+
+
 @app.post("/api/export")
 def api_export(body: dict):
+    from cull import lightroom, settings
     body = body or {}
     decisions = body.get("decisions") or {}
     images = _images_with_overrides()
+    guide = lightroom.guide(settings.load()["lightroom"])
     try:
         from cull import xmp
         written = xmp.export(decisions, images)
     except Exception:
-        return {"written": 0}
-    return {"written": written}
+        return {"written": 0, "guide": guide}
+    return {"written": written, "guide": guide}
 
 
 def _preview_file(name):

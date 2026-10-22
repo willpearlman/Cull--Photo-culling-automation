@@ -136,7 +136,9 @@ First matching tag wins. No match: no label.
 | POST | `/api/run` | `{"plan": {...}}` | `{"result", "warnings"}` (no LLM call; warnings re-checked for the edited plan) |
 | GET | `/api/baseline?n=150` | none | `{"picks": [...]}` |
 | POST | `/api/override` | `{"path": str, "rating": 1 | 5 | null}` | `{"ok": true}` (null clears). Saved to `config.OVERRIDES_PATH` as `{path: rating}`, applied in memory. Never written into scores.json |
-| POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int}` |
+| POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int, "guide"}` (guide: the Lightroom steps for the chosen mode, or null) |
+| GET | `/api/settings` | none | `{"lightroom": "classic" \| "cloud" \| null, "guide", "modes"}` |
+| POST | `/api/settings` | `{"lightroom": "classic" \| "cloud"}` | same as GET. Saved per user (`cull/settings.py`), 400 on a bad value |
 | GET | `/thumb/{name}` | none | 400px JPEG, cached in `work/thumbs/` |
 | GET | `/preview/{name}` | none | Full-resolution preview JPEG from `previews/`, served as-is (read only). Used for grid tiles at 3 columns or fewer |
 

@@ -85,6 +85,66 @@ body {
 }
 #topbar button:disabled { opacity: 0.5; cursor: default; }
 #export-btn { background: #3a3f47; }
+#topbar #lr-mode { background: none; color: var(--muted); padding: 6px 4px; font-size: 12px; }
+#topbar #lr-mode:hover { color: var(--text); }
+
+/* Setup page and export guide. */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.65);
+}
+.dialog-backdrop[hidden] { display: none; }
+.dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px 22px;
+}
+.dialog h2 { margin: 0 0 8px; font-size: 18px; }
+.dialog h3 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; }
+.dialog p { margin: 0 0 10px; line-height: 1.45; }
+.dialog .muted, .setup-option .muted { color: var(--muted); }
+.dialog .small { font-size: 12px; }
+.setup-options { display: grid; gap: 10px; margin: 14px 0; }
+.setup-option {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.setup-option:hover, .setup-option:focus-visible { border-color: #2f6df0; outline: none; }
+.setup-option.chosen { border-color: var(--pick); }
+.setup-option strong { font-size: 15px; }
+.guide-steps { margin: 0 0 6px; padding-left: 20px; line-height: 1.45; }
+.guide-steps li { margin-bottom: 8px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.dialog-actions button {
+  background: #2f6df0;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+.dialog-actions button.secondary { background: #3a3f47; }
+.dialog-actions button:disabled { opacity: 0.5; cursor: default; }
 
 .spinner {
   width: 14px;

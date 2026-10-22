@@ -10,7 +10,7 @@ from pathlib import Path
 
 from exiftool import ExifToolHelper
 
-from cull import config
+from cull import config, scenes
 
 
 def _xmp_path(image_path: str) -> Path:
@@ -19,12 +19,23 @@ def _xmp_path(image_path: str) -> Path:
     return config.SHOOT_DIR / (Path(name).stem + ".xmp")
 
 
-def _write_one(et: ExifToolHelper, image: dict, rating, label) -> None:
+def _cull_keywords() -> set[str]:
+    """Every keyword Cull can write, across all genres. Other keywords belong to the user."""
+    data = json.loads(scenes.VOCAB_PATH.read_text(encoding="utf-8"))
+    genres = [k for k in data if not k.startswith("_") and k not in ("base", "scored_only")]
+    return set(scenes.BASE_TAGS).union(*(scenes.genre_tags(g) for g in genres))
+
+
+def _write_one(et: ExifToolHelper, image: dict, rating, label, owned=frozenset()) -> None:
     args = [f"-XMP-xmp:Rating={rating}"]
     # Empty label clears it; Lightroom default label set otherwise.
     args.append(f"-XMP-xmp:Label={label or ''}")
-    # Remove then add, so re-exporting never duplicates a keyword.
-    for tag in image.get("scene_tags") or []:
+    tags = image.get("scene_tags") or []
+    # Drop Cull keywords this frame no longer has (the user's own keywords are untouched),
+    # then remove-and-add the current ones so re-exporting never duplicates a keyword.
+    for tag in sorted(set(owned) - set(tags)):
+        args.append(f"-XMP-dc:Subject-={tag}")
+    for tag in tags:
         args.append(f"-XMP-dc:Subject-={tag}")
         args.append(f"-XMP-dc:Subject+={tag}")
     args.append("-overwrite_original")
@@ -39,6 +50,7 @@ def export(decisions: dict, images: list[dict]) -> int:
     images: contract rows (used for scene_tags).
     """
     by_path = {img["path"]: img for img in images}
+    owned = _cull_keywords()
     written = 0
     with ExifToolHelper() as et:
         for path, decision in decisions.items():
@@ -46,20 +58,21 @@ def export(decisions: dict, images: list[dict]) -> int:
             if rating is None:
                 continue
             image = by_path.get(path, {"path": path})
-            _write_one(et, image, rating, decision.get("label"))
+            _write_one(et, image, rating, decision.get("label"), owned)
             written += 1
     return written
 
 
 def _export_from_scores(images: list[dict]) -> int:
     """CLI path: write each image's final_rating/final_label, skip nulls."""
+    owned = _cull_keywords()
     written = 0
     with ExifToolHelper() as et:
         for image in images:
             rating = image.get("final_rating")
             if rating is None:
                 continue
-            _write_one(et, image, rating, image.get("final_label"))
+            _write_one(et, image, rating, image.get("final_label"), owned)
             written += 1
     return written
 

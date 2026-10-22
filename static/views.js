@@ -29,13 +29,114 @@ async function setView(view) {
   }
 }
 
-// Export always sends the Cull result, whichever view is showing.
+// --- Lightroom mode: setup page and export guide -----------------------------
+// state.settings = {lightroom, guide, modes} from /api/settings.
+
+function dialogOpen() {
+  return !document.getElementById("setup").hidden || !document.getElementById("guide").hidden;
+}
+
+function closeDialogs() {
+  // The setup page cannot be dismissed until a mode is chosen.
+  if (state.settings && state.settings.lightroom) document.getElementById("setup").hidden = true;
+  document.getElementById("guide").hidden = true;
+}
+
+function renderModeButton() {
+  const s = state.settings || {};
+  document.getElementById("lr-mode").textContent =
+    s.guide ? s.guide.name + " ▾" : "Choose Lightroom ▾";
+}
+
+async function loadSettings() {
+  try {
+    state.settings = await getJSON("/api/settings");
+  } catch (err) {
+    setStatus("error: " + err.message);
+    return;
+  }
+  renderModeButton();
+  if (!state.settings.lightroom) openSetup();
+}
+
+function openSetup() {
+  const s = state.settings || {};
+  const box = document.getElementById("setup-options");
+  box.innerHTML = "";
+  for (const [mode, g] of Object.entries(s.modes || {})) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "setup-option" + (s.lightroom === mode ? " chosen" : "");
+    card.dataset.mode = mode;
+    const name = document.createElement("strong");
+    name.textContent = g.name;
+    const when = document.createElement("span");
+    when.textContent = "Run Cull: " + g.when;
+    const summary = document.createElement("span");
+    summary.className = "muted";
+    summary.textContent = g.summary;
+    card.append(name, when, summary);
+    card.addEventListener("click", () => chooseMode(mode));
+    box.appendChild(card);
+  }
+  document.getElementById("setup-hint").hidden = !s.lightroom;
+  document.getElementById("setup").hidden = false;
+}
+
+async function chooseMode(mode) {
+  try {
+    state.settings = await getJSON("/api/settings", { lightroom: mode });
+  } catch (err) {
+    setStatus("error: " + err.message);
+    return;
+  }
+  renderModeButton();
+  document.getElementById("setup").hidden = true;
+}
+
+function fillList(id, items) {
+  const list = document.getElementById(id);
+  list.innerHTML = "";
+  for (const text of items || []) {
+    const li = document.createElement("li");
+    li.textContent = text;
+    list.appendChild(li);
+  }
+}
+
+// Export step 1: show what to do before writing (per Lightroom mode), then confirm.
+function openExportGuide() {
+  const g = state.settings && state.settings.guide;
+  if (!g) {
+    openSetup();
+    return;
+  }
+  document.getElementById("guide-title").textContent = "Export to " + g.name;
+  document.getElementById("guide-lead").textContent =
+    "Cull will write a star rating, color label and keywords into a sidecar next to each of " +
+    state.images.length + " RAW files (" + state.picks.size + " picks at 5 stars, the rest at " +
+    "1 star). Your RAW files are never changed.";
+  fillList("guide-steps", g.before_export);
+  document.getElementById("guide-steps-head").textContent = "Before you write";
+  document.getElementById("guide-write").hidden = false;
+  document.getElementById("guide-close").textContent = "Cancel";
+  document.getElementById("guide").hidden = false;
+}
+
+// Export step 2: write the sidecars, then show the Lightroom steps for this mode.
 async function exportSidecars() {
-  const btn = document.getElementById("export-btn");
+  const btn = document.getElementById("guide-write");
   btn.disabled = true;
   try {
     const data = await getJSON("/api/export", { picks: [...state.picks], decisions: state.decisions });
+    const g = data.guide || state.settings.guide;
     setStatus("Wrote " + (data.written ?? 0) + " sidecars (" + state.picks.size + " picks)");
+    document.getElementById("guide-lead").textContent =
+      "Wrote " + (data.written ?? 0) + " sidecars. Next, in " + g.name + ":";
+    fillList("guide-steps", g.after_export);
+    document.getElementById("guide-steps-head").textContent = "Next steps";
+    btn.hidden = true;
+    document.getElementById("guide-close").textContent = "Done";
   } catch (err) {
     setStatus("error: " + err.message);
   } finally {

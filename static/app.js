@@ -479,6 +479,12 @@ function onKeydown(e) {
   if (tag === "TEXTAREA" || tag === "INPUT" || (el && el.isContentEditable)) return;
   const key = (e.key || "").toLowerCase();
 
+  // A dialog (setup or export guide) owns the keyboard: Esc closes it, culling keys do nothing.
+  if (dialogOpen()) {
+    if (key === "escape") closeDialogs();
+    return;
+  }
+
   // Ctrl/Cmd+Z and redo come first, before the plain-key culling handlers.
   if (e.ctrlKey || e.metaKey) {
     if (key === "z" && !e.shiftKey) {
@@ -763,6 +769,7 @@ function initTileSlider() {
 
 async function init() {
   initTileSlider();
+  loadSettings();  // shows the Lightroom setup page on first launch
   try {
     const scores = await getJSON("/api/scores");
     state.images = scores.images || [];
@@ -784,7 +791,10 @@ async function init() {
 
   document.getElementById("run-btn").addEventListener("click", runInstruction);
   document.getElementById("replan-btn").addEventListener("click", replan);
-  document.getElementById("export-btn").addEventListener("click", exportSidecars);
+  document.getElementById("export-btn").addEventListener("click", openExportGuide);
+  document.getElementById("lr-mode").addEventListener("click", openSetup);
+  document.getElementById("guide-write").addEventListener("click", exportSidecars);
+  document.getElementById("guide-close").addEventListener("click", closeDialogs);
   document.getElementById("view-cull").addEventListener("click", () => setView("cull"));
   document.getElementById("view-topn").addEventListener("click", () => setView("topn"));
   document.addEventListener("keydown", onKeydown);
