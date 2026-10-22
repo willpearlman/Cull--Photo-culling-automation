@@ -5,12 +5,28 @@ from PIL import Image
 from cull import scenes
 
 
-def test_face_count_rules_match_rekog():
+def test_face_count_rules():
     s = {}
     assert scenes.tags_for(1, s) == ["portrait"]
     assert scenes.tags_for(2, s) == ["couple"]
-    assert scenes.tags_for(3, s) == []
+    assert scenes.tags_for(3, s) == ["group"]  # rekog's rule left 3 faces untagged
     assert scenes.tags_for(5, s) == ["group"]
+
+
+def test_exclusive_genre_tags_keep_only_the_best_moment():
+    s = {"ceremony": 0.05, "reception": 0.09, "first kiss": -0.1, "rings": 0.02, "details": -0.3}
+    tags = scenes.tags_for(2, s, genre_tags=["ceremony", "reception", "first kiss", "rings", "details"],
+                           exclusive=["ceremony", "reception", "first kiss"])
+    assert tags == ["couple", "reception", "rings"]
+
+
+def test_wedding_vocabulary():
+    assert scenes.genre_tags("wedding") == [
+        "getting ready", "ceremony", "rings", "first kiss", "family formals", "couple portraits",
+        "first dance", "reception", "details"]
+    assert scenes.genre_tags("event") == []
+    assert set(scenes.exclusive_tags("wedding")) < set(scenes.genre_tags("wedding"))
+    assert scenes.tag_vocab("wedding")[:4] == ["group", "couple", "portrait", "candid"]
 
 
 def test_score_tags_respect_thresholds_and_detail_needs_no_faces():
@@ -24,6 +40,7 @@ def test_score_tags_respect_thresholds_and_detail_needs_no_faces():
 def test_genre_tags_are_appended_only_when_asked():
     s = {"ceremony": 0.2, "reception": -0.1}
     assert scenes.tags_for(2, s, genre_tags=["ceremony", "reception"]) == ["couple", "ceremony"]
+    assert scenes.tags_for(2, s, genre_tags=["ceremony"], genre_threshold=0.3) == ["couple"]
     assert scenes.tags_for(2, s) == ["couple"]
 
 

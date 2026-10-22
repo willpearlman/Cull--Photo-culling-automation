@@ -91,6 +91,18 @@ def _dedupe(pool, keep, reasons):
     return kept
 
 
+def usable_per_group(images, plan, by="group_id"):
+    """{group: frames left after the plan's filters and burst dedupe}. Ignores overrides,
+    coverage, cap and target, so it is the most any cap could draw from each moment."""
+    pool = _apply_filters(sorted(images, key=lambda i: i["path"]), _rules(plan, "filter"), {})
+    for rule in _rules(plan, "dedupe_bursts"):
+        pool = _dedupe(pool, max(1, int(rule.get("keep", 1))), {})
+    counts = {}
+    for img in pool:
+        counts[img.get(by)] = counts.get(img.get(by), 0) + 1
+    return counts
+
+
 def _group_label(images, by):
     labels = {}
     for img in images:

@@ -62,6 +62,15 @@ These shapes are fixed. Code on both lanes builds against them.
 }
 ```
 
+Plans from the agent also carry `unsupported` (requests Cull cannot act on, shown as "Cull
+can't detect: ..."), `warnings` (contradictions found before solving) and `target_defaulted`
+(true when the instruction gave no number, so the target is `DEFAULT_KEEP_FRACTION` of the
+shoot). The solver ignores these fields. When the user named no cap, the agent sizes the cap
+from each moment's usable frames so the cap never stops the target being met.
+
+`prefer` tags come from the genre's vocabulary (`scenes.tag_vocab(GENRE)`): the base tags plus
+the genre's tags in `fixtures/vocab.json`.
+
 `cap` is per moment, not per person. Cull never identifies people, so "max 3 of
 the same couple" maps to a per-moment cap.
 
@@ -124,7 +133,7 @@ First matching tag wins. No match: no label.
 | --- | --- | --- | --- |
 | GET | `/api/scores` | none | `{"images": [...], "groups": [{"group_id", "group_label", "count"}]}` |
 | POST | `/api/plan` | `{"instruction": str}` | `{"plan", "result", "explanation"}` |
-| POST | `/api/run` | `{"plan": {...}}` | `{"result"}` (no LLM call) |
+| POST | `/api/run` | `{"plan": {...}}` | `{"result", "warnings"}` (no LLM call; warnings re-checked for the edited plan) |
 | GET | `/api/baseline?n=150` | none | `{"picks": [...]}` |
 | POST | `/api/override` | `{"path": str, "rating": 1 | 5 | null}` | `{"ok": true}` (null clears). Saved to `config.OVERRIDES_PATH` as `{path: rating}`, applied in memory. Never written into scores.json |
 | POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int}` |

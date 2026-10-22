@@ -39,6 +39,8 @@
     }
   },
   "wedding": {
+    "_exclusive": ["getting ready", "ceremony", "first kiss", "family formals", "couple portraits",
+                   "first dance", "reception"],
     "getting ready": {
       "yes": ["a bride getting her hair and makeup done", "a groom putting on his suit and tie"],
       "no": ["a wedding ceremony", "a wedding reception party"]

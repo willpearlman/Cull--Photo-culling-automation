@@ -20,6 +20,12 @@ SCORES_PATH = (REPO_ROOT / _scores).resolve() if _scores and not Path(_scores).i
 # Overrides live beside scores.json, never inside it, so fixtures stay clean.
 OVERRIDES_PATH = SCORES_PATH.with_name(SCORES_PATH.stem + ".overrides.json")
 
+# Shoot genre: picks the extra scene tags (fixtures/vocab.json) and the agent's tag vocabulary.
+# "wedding" or "event" (base tags only).
+GENRE = os.getenv("GENRE", "wedding")
+# Frames kept when an instruction gives no number.
+DEFAULT_KEEP_FRACTION = float(os.getenv("DEFAULT_KEEP_FRACTION", "0.1"))
+
 # Instruction agent: "anthropic" or "presets". Unset means anthropic when a key is present.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER") or ("anthropic" if os.getenv("ANTHROPIC_API_KEY")
                                              else "presets")

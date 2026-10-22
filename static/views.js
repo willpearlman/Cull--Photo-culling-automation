@@ -88,7 +88,62 @@ function setSpinner(on) {
   document.getElementById("replan-btn").disabled = on;
 }
 
+// One plain-English line per rule in the plan, so the photographer can see what the agent
+// understood. Returns [text, isDefault].
+function ruleText(rule) {
+  switch (rule.type) {
+    case "filter": {
+      const eyes = rule.max_eyes_closed === 0
+        ? (rule.allow_intentional ? "No blinks (deliberate closed eyes OK)" : "No closed eyes at all")
+        : "Up to " + rule.max_eyes_closed + " closed-eye faces";
+      const parts = [eyes, "sharpness ≥ " + rule.min_sharpness];
+      if (rule.drop_exposure_flags) parts.push("drop bad exposure");
+      return parts.join(" · ");
+    }
+    case "dedupe_bursts": return "Best " + rule.keep + " per burst";
+    case "coverage": return "At least " + rule.min_per_group + " per moment";
+    case "cap": return "At most " + rule.max_per_group + " per moment";
+    case "prefer":
+      return (rule.weight >= 2 ? "Strongly favor " : "Favor ") + (rule.tags || []).join(", ");
+    default: return rule.type;
+  }
+}
+
+function renderPlanRules() {
+  const plan = state.plan || {};
+  const unsupported = document.getElementById("plan-unsupported");
+  const items = plan.unsupported || [];
+  unsupported.hidden = items.length === 0;
+  unsupported.textContent = "Cull can't detect: " + items.join("; ");
+
+  const warnings = document.getElementById("plan-warnings");
+  warnings.innerHTML = "";
+  for (const w of plan.warnings || []) {
+    const li = document.createElement("li");
+    li.textContent = w;
+    warnings.appendChild(li);
+  }
+
+  const list = document.getElementById("plan-rules");
+  list.innerHTML = "";
+  const target = document.createElement("li");
+  target.textContent = "Keep " + plan.target + " frames";
+  if (plan.target_defaulted) {
+    const note = document.createElement("span");
+    note.className = "default";
+    note.textContent = " (no number given, so 10% of the shoot)";
+    target.appendChild(note);
+  }
+  list.appendChild(target);
+  for (const rule of plan.rules || []) {
+    const li = document.createElement("li");
+    li.textContent = ruleText(rule);
+    list.appendChild(li);
+  }
+}
+
 function renderReport() {
+  renderPlanRules();
   const list = document.getElementById("report");
   list.innerHTML = "";
   for (const entry of state.report) {

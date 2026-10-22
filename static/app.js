@@ -202,6 +202,8 @@ function relabelCoverageRows() {
 async function runPlan() {
   const data = await getJSON("/api/run", { plan: state.plan });
   applyResult(data.result);
+  // Hand edits can create or clear contradictions, so take the server's fresh check.
+  if (data.warnings) state.plan.warnings = data.warnings;
   document.getElementById("export-btn").disabled = false;
   if (state.view === "topn") await loadBaseline();
 }
@@ -620,7 +622,11 @@ async function replan() {
   const capEl = document.getElementById("plan-cap");
   const allowEl = document.getElementById("plan-allow-intentional");
 
-  if (targetEl.value !== "") state.plan.target = Number(targetEl.value);
+  if (targetEl.value !== "") {
+    const t = Number(targetEl.value);
+    if (t !== state.plan.target) state.plan.target_defaulted = false;
+    state.plan.target = t;
+  }
   const cap = findRule("cap");
   if (cap && capEl.value !== "") cap.max_per_group = Number(capEl.value);
   const filter = findRule("filter");

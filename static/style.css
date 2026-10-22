@@ -155,6 +155,11 @@ body {
 }
 #replan-btn:disabled { opacity: 0.5; cursor: default; }
 
+.plan-rules, .plan-warnings { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.plan-rules li { padding: 3px 0; border-bottom: 1px solid var(--line); }
+.plan-rules .default { color: var(--muted); }
+.plan-warnings li, .unsupported { color: var(--warn); font-size: 12px; margin: 0 0 6px; }
+.plan-warnings li::before { content: "\26a0  "; }
 .report { list-style: none; margin: 0; padding: 0; }
 .report-row {
   display: flex;

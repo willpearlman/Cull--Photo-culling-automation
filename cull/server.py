@@ -17,6 +17,17 @@ app = FastAPI(title="Cull")
 _STATIC_DIR = config.REPO_ROOT / "static"
 
 
+@app.middleware("http")
+async def _revalidate_ui(request, call_next):
+    """Make the browser re-check UI files on every load, so an update never runs stale
+    JavaScript. Unchanged files still come from cache via a 304."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".js", ".css")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 def _load_scores():
     with open(config.SCORES_PATH, encoding="utf-8") as fh:
         return json.load(fh)
@@ -89,6 +100,7 @@ def api_plan(body: dict):
     if plan is None:
         plan = _preset_plan(instruction)
         explanation = "Preset plan"
+        plan["warnings"] = ["The instruction agent is unavailable, so Cull used a preset plan."]
     result = solver.run_plan(images, plan)
     if explanation is None:
         try:
@@ -106,14 +118,20 @@ def _preset_plan(instruction):
     for key, plan in presets.items():
         if key.lower() in low:
             return plan
-    return next(iter(presets.values()))
+    return next(iter(presets.values()))  # fresh dict per call, safe to annotate
 
 
 @app.post("/api/run")
 def api_run(body: dict):
     plan = (body or {}).get("plan") or {}
     images = _images_with_overrides()
-    return {"result": solver.run_plan(images, plan)}
+    result = solver.run_plan(images, plan)
+    try:
+        from cull import agent
+        warnings = agent.precheck(plan, images) if plan.get("rules") else []
+    except Exception:
+        warnings = []
+    return {"result": result, "warnings": warnings}
 
 
 @app.get("/api/baseline")

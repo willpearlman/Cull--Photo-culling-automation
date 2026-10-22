@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from PIL import Image
 
-from cull import config, models
+from cull import config, faces, models
 
 log = logging.getLogger(__name__)
 
@@ -45,19 +45,42 @@ GENRE_THRESHOLD = 0.0
 _session = None
 
 
+# Tags every genre can emit: face rules, base scene tags, and candid (set by the aesthetic stage).
+BASE_TAGS = ["group", "couple", "portrait", "candid", "dance floor", "food", "detail",
+             "indoor", "outdoor"]
+
+
+def _data():
+    return json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+
+
+def genre_tags(genre):
+    """Extra tag names for a genre, in vocab.json order. Unknown genre (e.g. "event"): none."""
+    return [t for t in _data().get(genre, {}) if not t.startswith("_")]
+
+
+def exclusive_tags(genre):
+    """Genre tags where a frame gets at most one (its moment): the highest score wins."""
+    return _data().get(genre, {}).get("_exclusive", [])
+
+
+def tag_vocab(genre):
+    """Every tag a shoot of this genre can carry. The agent's prefer rule picks from these."""
+    return BASE_TAGS + genre_tags(genre)
+
+
 def vocab(genre=None):
     """{tag: {"yes": [...], "no": [...]}} for the base tags, scored-only tags, and a genre."""
-    data = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
+    data = _data()
     out = {**data["base"], **data["scored_only"]}
-    if genre:
-        out.update(data[genre])
+    out.update({t: v for t, v in data.get(genre, {}).items() if not t.startswith("_")})
     return out
 
 
 def _all_prompts():
-    data = json.loads(VOCAB_PATH.read_text(encoding="utf-8"))
-    return sorted({p for k, group in data.items() if not k.startswith("_")
-                   for tag in group.values() for p in tag["yes"] + tag["no"]})
+    return sorted({p for k, group in _data().items() if not k.startswith("_")
+                   for t, tag in group.items() if not t.startswith("_")
+                   for p in tag["yes"] + tag["no"]})
 
 
 def build_vocab():
@@ -134,12 +157,17 @@ def unpack(text):
     return np.frombuffer(base64.b64decode(text), dtype=np.float16).astype(np.float32)
 
 
-def tags_for(face_count, s, genre_tags=(), thresholds=None, genre_threshold=GENRE_THRESHOLD):
-    """scene_tags from face_count and one image's {tag: score}, in rekog's tag order."""
+def tags_for(face_count, s, genre_tags=(), thresholds=None, genre_threshold=GENRE_THRESHOLD,
+             exclusive=()):
+    """scene_tags from face_count and one image's {tag: score}, in rekog's tag order.
+
+    Genre tags in `exclusive` compete: only the best one above the threshold is kept.
+    3 faces counts as a group (rekog tagged nothing at 3).
+    """
     th = {**THRESHOLDS, **(thresholds or {})}
     on = {t for t in th if s.get(t, -1) > th[t]}
     tags = []
-    if face_count >= 4 or "crowd" in on:
+    if face_count >= 3 or "crowd" in on:
         tags.append("group")
     if face_count == 2:
         tags.append("couple")
@@ -149,7 +177,10 @@ def tags_for(face_count, s, genre_tags=(), thresholds=None, genre_threshold=GENR
     if face_count == 0 and "detail" in on:
         tags.append("detail")
     tags += [t for t in ("indoor", "outdoor") if t in on]
-    tags += [t for t in genre_tags if s.get(t, -1) > genre_threshold]
+    competing = [t for t in genre_tags if t in exclusive and s.get(t, -1) > genre_threshold]
+    best = max(competing, key=lambda t: s[t], default=None)
+    tags += [t for t in genre_tags
+             if (t == best if t in exclusive else s.get(t, -1) > genre_threshold)]
     return tags
 
 
@@ -157,14 +188,17 @@ def run(images, cached, genre=None):
     todo = [im for im in images if im["path"] not in cached and im.get("preview")]
     if not todo:
         return {}
+    genre = config.GENRE if genre is None else genre
     tags = vocab(genre)
-    genre_tags = list(vocab(genre).keys() - vocab().keys()) if genre else []
+    extra, exclusive = genre_tags(genre), exclusive_tags(genre)
     vecs = embed([config.CULL_ROOT / im["preview"] for im in todo])
     s = scores(vecs, tags)
     out = {}
     for i, im in enumerate(todo):
         row = {t: round(float(v[i]), 4) for t, v in s.items()}
-        out[im["path"]] = {"scene_tags": tags_for(im.get("face_count") or 0, row, genre_tags),
+        face_count = faces.summarize(im["faces"])["face_count"] if "faces" in im \
+            else im.get("face_count") or 0
+        out[im["path"]] = {"scene_tags": tags_for(face_count, row, extra, exclusive=exclusive),
                            "scene_scores": row, "embedding": pack(vecs[i])}
     log.info("scenes: %d images", len(out))
     return out
