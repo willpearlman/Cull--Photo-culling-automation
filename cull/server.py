@@ -158,6 +158,24 @@ def api_override(body: dict):
     return {"ok": True}
 
 
+def _learn_from_selection(picks):
+    """Record the final selection for personal taste: every kept frame, plus every frame the
+    photographer explicitly rejected. Skipped when they changed nothing: Cull's own picks carry
+    no new information, and learning them would only amplify Cull's existing taste.
+    Best effort: export must never fail because of it."""
+    try:
+        from cull import personal
+        overrides = _load_overrides()
+        if not overrides:
+            return 0
+        selection = {p: 1 for p, r in overrides.items() if r == 1}
+        selection.update({p: 5 for p in picks})
+        return personal.record(str(config.CULL_ROOT), personal.shoot_rows(config.WORK_DIR),
+                               selection)
+    except Exception:
+        return 0
+
+
 @app.get("/api/settings")
 def api_settings():
     from cull import lightroom, settings
@@ -187,7 +205,8 @@ def api_export(body: dict):
         written = xmp.export(decisions, images)
     except Exception:
         return {"written": 0, "guide": guide}
-    return {"written": written, "guide": guide}
+    learned = _learn_from_selection(body.get("picks") or [])
+    return {"written": written, "guide": guide, "learned_from": learned}
 
 
 def _preview_file(name):

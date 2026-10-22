@@ -112,7 +112,7 @@ def run(images: list[dict], cached: dict) -> dict:
 | faces | `faces.py` | `work/faces.json` | face_count, eyes_closed_count, smile_count, faces (raw per-face scores) |
 | scenes | `scenes.py` | `work/scenes.json` | scene_tags, scene_scores, embedding (needs faces) |
 | moments | `moments.py` | `work/moments.json` | group_id, group_label (recomputes all images, ignores `cached`) |
-| aesthetic | `aesthetic.py` | `work/aesthetic.json` | claude_score, claude_reason, intentional_eyes_closed, candid (needs faces, scenes) |
+| aesthetic | `aesthetic.py` | `work/aesthetic.json` | claude_score (base plus the photographer's learned shift), base_score, claude_reason, intentional_eyes_closed, candid (needs faces, scenes) |
 
 Every stage runs locally with no network (models download once on first use). The old AWS
 stages (rekog, taste) are removed. Their caches, `work/rekog.json` and `work/taste.json`,
@@ -136,7 +136,7 @@ First matching tag wins. No match: no label.
 | POST | `/api/run` | `{"plan": {...}}` | `{"result", "warnings"}` (no LLM call; warnings re-checked for the edited plan) |
 | GET | `/api/baseline?n=150` | none | `{"picks": [...]}` |
 | POST | `/api/override` | `{"path": str, "rating": 1 | 5 | null}` | `{"ok": true}` (null clears). Saved to `config.OVERRIDES_PATH` as `{path: rating}`, applied in memory. Never written into scores.json |
-| POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int, "guide"}` (guide: the Lightroom steps for the chosen mode, or null) |
+| POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int, "guide", "learned_from": int}` (guide: the Lightroom steps for the chosen mode, or null. learned_from: frames personal taste now learns from, 0 if the photographer changed nothing or there are too few; see `cull/personal.py`) |
 | GET | `/api/settings` | none | `{"lightroom": "classic" \| "cloud" \| null, "guide", "modes"}` |
 | POST | `/api/settings` | `{"lightroom": "classic" \| "cloud"}` | same as GET. Saved per user (`cull/settings.py`), 400 on a bad value |
 | GET | `/thumb/{name}` | none | 400px JPEG, cached in `work/thumbs/` |

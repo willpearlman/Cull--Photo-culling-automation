@@ -3,6 +3,7 @@
 A ridge regression head (fixtures/aesthetic_head.npz) predicts a 1 to 10 keeper score from the
 SigLIP image vector (scenes stage) plus sharpness, exposure and face features (faces stage).
 The head is trained by tools/train_aesthetic.py on Claude's taste scores from past shoots.
+On top of it, cull/personal.py adds a shift learned from this photographer's overrides.
 
 Fills the taste fields: claude_score (1 to 10, one decimal, every frame), claude_reason (a
 template, no LLM), candid (SigLIP zero-shot), intentional_eyes_closed (a closed-eyed face that
@@ -100,12 +101,16 @@ def run(images, cached):
     todo = [im for im in images if im["path"] not in cached and im.get("embedding")]
     if not todo:
         return {}
-    pred = np.clip(predict(_load_head(), features(todo)), 1.0, 10.0)
+    from cull import personal  # imports this module, so load it at call time
+    x = features(todo)
+    base = np.clip(predict(_load_head(), x), 1.0, 10.0)
+    pred = np.clip(base + personal.shift(x), 1.0, 10.0)
     out = {}
-    for im, p in zip(todo, pred):
+    for im, b, p in zip(todo, base, pred):
         score = round(float(p), 1)
         out[im["path"]] = {
             "claude_score": score,
+            "base_score": round(float(b), 1),  # before the photographer's learned shift
             "claude_reason": reason(im, score),
             "candid": (im.get("scene_scores") or {}).get("candid", -1.0) > CANDID_THRESHOLD,
             "intentional_eyes_closed": _intentional(im),

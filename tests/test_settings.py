@@ -38,6 +38,28 @@ def test_each_mode_has_a_complete_guide():
     assert lightroom.guide(None) is None
 
 
+def test_export_records_the_final_selection(store, tmp_path, monkeypatch):
+    from cull import config, personal, server, xmp
+    monkeypatch.setattr(server, "_images_with_overrides", lambda: [{"path": "a"}, {"path": "b"}])
+    monkeypatch.setattr(server, "_load_overrides", lambda: {"b": 1, "c": 5})
+    monkeypatch.setattr(xmp, "export", lambda decisions, images: len(decisions))
+    seen = {}
+    monkeypatch.setattr(personal, "shoot_rows", lambda work: ["rows"])
+    monkeypatch.setattr(personal, "record",
+                        lambda shoot, rows, sel: seen.update(shoot=shoot, sel=sel) or 9)
+    r = TestClient(server.app).post("/api/export", json={"picks": ["a"], "decisions": {"a": {}}})
+    assert r.json()["learned_from"] == 9
+    # Picks are kept (5); only explicit rejects count as rejects; a forced pick Cull
+    # dropped from the picks ("c") is not invented.
+    assert seen == {"shoot": str(config.CULL_ROOT), "sel": {"a": 5, "b": 1}}
+
+    # No overrides: the selection is just Cull's own picks, so nothing is learned.
+    seen.clear()
+    monkeypatch.setattr(server, "_load_overrides", lambda: {})
+    r = TestClient(server.app).post("/api/export", json={"picks": ["a"], "decisions": {"a": {}}})
+    assert r.json()["learned_from"] == 0 and seen == {}
+
+
 def test_settings_api_round_trip(store):
     from cull import server
     client = TestClient(server.app)
