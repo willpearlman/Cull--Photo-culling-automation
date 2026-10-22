@@ -1,8 +1,13 @@
-"""XMP sidecar export (Will's lane).
+"""XMP sidecar export.
 
 Writes Lightroom-readable .xmp sidecars next to each ARW. Originals are never
 touched. One stay-open ExifToolHelper per batch; per image we call
 `et.execute` with raw args so writing to a missing .xmp is not an error.
+
+Keywords go into both dc:subject and lr:hierarchicalSubject, as Lightroom Classic writes
+them. Tested on Lightroom (cloud) 2026-10-22: with dc:subject alone it showed no keywords;
+with both it showed them. The camera's own rating inside the ARW does not block the
+sidecar's rating.
 """
 import argparse
 import json
@@ -11,6 +16,8 @@ from pathlib import Path
 from exiftool import ExifToolHelper
 
 from cull import config, scenes
+
+KEYWORD_FIELDS = ("XMP-dc:Subject", "XMP-lr:HierarchicalSubject")
 
 
 def _xmp_path(image_path: str) -> Path:
@@ -33,11 +40,12 @@ def _write_one(et: ExifToolHelper, image: dict, rating, label, owned=frozenset()
     tags = image.get("scene_tags") or []
     # Drop Cull keywords this frame no longer has (the user's own keywords are untouched),
     # then remove-and-add the current ones so re-exporting never duplicates a keyword.
-    for tag in sorted(set(owned) - set(tags)):
-        args.append(f"-XMP-dc:Subject-={tag}")
-    for tag in tags:
-        args.append(f"-XMP-dc:Subject-={tag}")
-        args.append(f"-XMP-dc:Subject+={tag}")
+    for field in KEYWORD_FIELDS:
+        for tag in sorted(set(owned) - set(tags)):
+            args.append(f"-{field}-={tag}")
+        for tag in tags:
+            args.append(f"-{field}-={tag}")
+            args.append(f"-{field}+={tag}")
     args.append("-overwrite_original")
     args.append(str(_xmp_path(image["path"])))
     et.execute(*args)
