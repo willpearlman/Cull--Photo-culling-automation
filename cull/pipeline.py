@@ -25,6 +25,8 @@ STAGES = [
     ("local", "cull.local_scores", "local.json"),
     # faces fills the same fields as rekog. rekog overlays it until it is removed.
     ("faces", "cull.faces", "faces.json"),
+    # scenes needs face_count from faces. rekog also overlays scene_tags until removed.
+    ("scenes", "cull.scenes", "scenes.json"),
     ("rekog", "cull.rekog", "rekog.json"),
     ("moments", "cull.moments", "moments.json"),
     ("taste", "cull.taste", "taste.json"),

@@ -1,0 +1,75 @@
+{
+  "_doc": "Scene tag prompts for cull/scenes.py. A tag's score is mean similarity to its yes prompts minus mean similarity to its no prompts. Edit prompts, then run: python -m cull.scenes --build-vocab",
+  "base": {
+    "indoor": {
+      "yes": ["a photo taken indoors", "people inside a room"],
+      "no": ["a photo taken outdoors", "people outside under the sky"]
+    },
+    "outdoor": {
+      "yes": ["a photo taken outdoors", "people outside under the sky"],
+      "no": ["a photo taken indoors", "people inside a room"]
+    },
+    "dance floor": {
+      "yes": ["people dancing on a dance floor at a party", "a crowded dance floor with party lights"],
+      "no": ["people sitting and listening", "people standing and talking"]
+    },
+    "food": {
+      "yes": ["a photo of food on a plate", "a cake on a table", "a buffet of food"],
+      "no": ["a photo of people", "a photo of a room"]
+    },
+    "detail": {
+      "yes": ["a close-up photo of flowers", "a close-up photo of jewelry", "a decorated table setting"],
+      "no": ["a photo of people", "a photo of a crowd", "a TV screen showing a presentation", "an empty room",
+             "a landscape photo", "a photo of a building"]
+    },
+    "crowd": {
+      "yes": ["a large crowd of people", "an audience seated in rows"],
+      "no": ["one or two people", "an empty room"]
+    }
+  },
+  "scored_only": {
+    "candid": {
+      "yes": ["a candid photo of people who are not posing", "people caught in a natural moment"],
+      "no": ["a posed photo of people looking at the camera", "people smiling for a group photo"]
+    }
+  },
+  "wedding": {
+    "getting ready": {
+      "yes": ["a bride getting her hair and makeup done", "a groom putting on his suit and tie"],
+      "no": ["a wedding ceremony", "a wedding reception party"]
+    },
+    "ceremony": {
+      "yes": ["a wedding ceremony at the altar", "a bride and groom exchanging vows"],
+      "no": ["a wedding reception party", "people getting ready"]
+    },
+    "rings": {
+      "yes": ["a close-up of wedding rings", "a groom putting a ring on the bride's finger"],
+      "no": ["a photo of a crowd", "a photo of a room"]
+    },
+    "first kiss": {
+      "yes": ["a bride and groom kissing at the altar"],
+      "no": ["a bride and groom standing apart", "wedding guests sitting"]
+    },
+    "family formals": {
+      "yes": ["a posed family group photo at a wedding", "relatives standing in rows with the bride and groom"],
+      "no": ["a candid photo of guests", "people dancing"]
+    },
+    "couple portraits": {
+      "yes": ["a portrait of a bride and groom posing together", "a romantic photo of a married couple outdoors"],
+      "no": ["a group of wedding guests", "an empty room"]
+    },
+    "first dance": {
+      "yes": ["a bride and groom dancing alone on the dance floor"],
+      "no": ["many guests dancing", "a bride and groom standing still"]
+    },
+    "reception": {
+      "yes": ["guests at a wedding reception", "people at tables at a wedding party"],
+      "no": ["a wedding ceremony", "people getting ready"]
+    },
+    "details": {
+      "yes": ["a close-up of a wedding dress", "wedding flowers and decorations", "a wedding cake"],
+      "no": ["a photo of people", "a photo of a crowd", "a TV screen showing a presentation", "an empty room",
+             "a landscape photo", "a photo of a building"]
+    }
+  }
+}

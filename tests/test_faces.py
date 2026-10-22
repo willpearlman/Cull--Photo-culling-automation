@@ -29,9 +29,10 @@ def test_blurry_frames_are_skipped_without_running_models(monkeypatch):
 
 
 def test_download_with_wrong_checksum_is_rejected(tmp_path, monkeypatch):
-    monkeypatch.setattr(faces, "MODEL_DIR", tmp_path)
-    monkeypatch.setattr(faces.urllib.request, "urlretrieve",
+    from cull import models
+    monkeypatch.setattr(models, "MODEL_DIR", tmp_path)
+    monkeypatch.setattr(models.urllib.request, "urlretrieve",
                         lambda url, dst: dst.write_bytes(b"not the model"))
     with pytest.raises(RuntimeError, match="does not match"):
-        faces.model_path("yunet")
+        models.path("yunet")
     assert not any(tmp_path.iterdir())  # nothing half-written is left behind

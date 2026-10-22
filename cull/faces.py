@@ -9,31 +9,16 @@ re-tuned from the cache without re-running the models.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 import threading
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
 
-from cull import config
+from cull import config, models
 
 log = logging.getLogger(__name__)
-
-MODEL_DIR = config.REPO_ROOT / "models"
-# name -> (filename, official URL, sha256). A download that does not match is rejected.
-MODELS = {
-    "yunet": ("face_detection_yunet_2023mar.onnx",
-              "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/"
-              "face_detection_yunet_2023mar.onnx",
-              "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"),
-    "landmarker": ("face_landmarker.task",
-                   "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
-                   "face_landmarker/float16/latest/face_landmarker.task",
-                   "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"),
-}
 
 DETECT_SCORE = 0.6          # YuNet confidence floor
 RELATIVE_FACE_WIDTH = 0.25  # same filter as rekog: fraction of the largest face's width
@@ -49,23 +34,6 @@ _opened = []
 _opened_lock = threading.Lock()
 
 
-def model_path(name):
-    """Local path of a model file, downloaded once from its official source."""
-    filename, url, sha256 = MODELS[name]
-    path = MODEL_DIR / filename
-    if not path.exists():
-        MODEL_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(path.suffix + ".part")
-        log.info("downloading %s", url)
-        urllib.request.urlretrieve(url, tmp)
-        got = hashlib.sha256(tmp.read_bytes()).hexdigest()
-        if got != sha256:
-            tmp.unlink()
-            raise RuntimeError(f"{filename}: sha256 {got} does not match the pinned model")
-        tmp.replace(path)
-    return path
-
-
 def _models():
     """Per-thread detector and landmarker (neither is safe to share across threads)."""
     if not hasattr(_local, "detector"):
@@ -73,10 +41,10 @@ def _models():
         from mediapipe.tasks.python import BaseOptions, vision
         _local.mp = mp
         _local.detector = cv2.FaceDetectorYN.create(
-            str(model_path("yunet")), "", (320, 320), DETECT_SCORE, 0.3, 5000)
+            str(models.path("yunet")), "", (320, 320), DETECT_SCORE, 0.3, 5000)
         _local.landmarker = vision.FaceLandmarker.create_from_options(
             vision.FaceLandmarkerOptions(
-                base_options=BaseOptions(model_asset_path=str(model_path("landmarker"))),
+                base_options=BaseOptions(model_asset_path=str(models.path("landmarker"))),
                 running_mode=vision.RunningMode.IMAGE,
                 num_faces=1,
                 min_face_detection_confidence=0.3,
@@ -173,7 +141,7 @@ def run(images, cached):
     todo = [im for im in images if im["path"] not in cached]
     if not todo:
         return {}
-    model_path("yunet"), model_path("landmarker")  # download once, before threads start
+    models.path("yunet"), models.path("landmarker")  # download once, before threads start
     try:
         with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as pool:
             results = list(pool.map(_process, todo))

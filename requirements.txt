@@ -11,6 +11,9 @@ pytest>=8.0
 # Local faces stage. Install mediapipe itself without its dependency list:
 #   pip install --no-deps mediapipe==1.1.1
 # Its list adds opencv-contrib-python, which overwrites opencv-python-headless (same cv2 folder).
+# Local scene tags stage (SigLIP). tokenizers is only needed for --build-vocab.
+onnxruntime>=1.31
+tokenizers>=0.23
 absl-py>=2.0
 flatbuffers>=24.0
 certifi
