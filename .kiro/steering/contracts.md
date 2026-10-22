@@ -84,7 +84,7 @@ Reasons start with `Kept:` or `Rejected:` and name the cause, for example
 `Rejected: weaker frame of burst B017`, `Kept: coverage pick for Table 7`,
 `Kept: user override`.
 
-## Stage interface (how three lanes plug into one pipeline)
+## Stage interface (how stages plug into one pipeline)
 
 `cull/pipeline.py` (Will) owns all cache files and the CLI. Stage modules never
 read or write cache files themselves. Each stage module exposes:
@@ -96,19 +96,20 @@ def run(images: list[dict], cached: dict) -> dict:
     Returns {path: {field: value}} for newly processed images only."""
 ```
 
-| Stage | Module (lane) | Cache | Fields it returns |
+| Stage | Module | Cache | Fields it returns |
 | --- | --- | --- | --- |
-| ingest | `ingest.py` (Will) | `work/exif.json` | path, preview, capture_time, burst_id, exposure_time, iso, focal_length, model |
-| local | `local_scores.py` (Will) | `work/local.json` | sharpness, exposure_flags |
-| faces | `faces.py` (local) | `work/faces.json` | face_count, eyes_closed_count, smile_count, faces (raw per-face scores) |
-| scenes | `scenes.py` (local) | `work/scenes.json` | scene_tags, scene_scores, embedding (needs faces) |
-| rekog | `rekog.py` (AWS, legacy) | `work/rekog.json` | face_count, eyes_closed_count, smile_count, scene_tags |
-| moments | `moments.py` (Will) | `work/moments.json` | group_id, group_label (recomputes all images, ignores `cached`) |
-| aesthetic | `aesthetic.py` (local) | `work/aesthetic.json` | claude_score, claude_reason, intentional_eyes_closed, candid (needs faces, scenes) |
-| taste | `taste.py` (AWS, legacy) | `work/taste.json` | claude_score, claude_reason, intentional_eyes_closed, candid (bool) |
+| ingest | `ingest.py` | `work/exif.json` | path, preview, capture_time, burst_id, exposure_time, iso, focal_length, model |
+| local | `local_scores.py` | `work/local.json` | sharpness, exposure_flags |
+| faces | `faces.py` | `work/faces.json` | face_count, eyes_closed_count, smile_count, faces (raw per-face scores) |
+| scenes | `scenes.py` | `work/scenes.json` | scene_tags, scene_scores, embedding (needs faces) |
+| moments | `moments.py` | `work/moments.json` | group_id, group_label (recomputes all images, ignores `cached`) |
+| aesthetic | `aesthetic.py` | `work/aesthetic.json` | claude_score, claude_reason, intentional_eyes_closed, candid (needs faces, scenes) |
 
-Merge order: ingest, local, faces, scenes, rekog, moments, aesthetic, taste. The legacy AWS
-stages overlay the local ones while their caches exist. If `candid` is true, merge
+Every stage runs locally with no network (models download once on first use). The old AWS
+stages (rekog, taste) are removed. Their caches, `work/rekog.json` and `work/taste.json`,
+stay on disk as benchmark and training labels and are never merged.
+
+Merge order: ingest, local, faces, scenes, moments, aesthetic. If `candid` is true, merge
 adds `"candid"` to `scene_tags`. A stage module that does not exist yet is
 skipped with a one-line message.
 

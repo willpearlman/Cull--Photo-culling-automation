@@ -1,12 +1,15 @@
 """Stage runner and the only owner of the cache files.
 
 CLI:
-    python -m cull.pipeline --stage all|ingest|local|rekog|moments|taste|merge [--limit N]
+    python -m cull.pipeline --stage all|ingest|local|faces|scenes|moments|aesthetic|merge [--limit N]
 
-Each stage imports cull.<module>.run(images, cached). A stage whose module or
-run function does not exist is skipped with a one-line message. merge overlays
-the caches in contract order, derives scene_tags/candid, fills missing contract
-fields with null, and writes config.SCORES_PATH.
+Every stage runs locally with no network. Each stage imports cull.<module>.run(images, cached).
+A stage whose module or run function does not exist is skipped with a one-line message.
+merge overlays the caches in contract order, derives scene_tags/candid, fills missing
+contract fields with null, and writes config.SCORES_PATH.
+
+The old AWS caches (rekog.json, taste.json) are no longer read here. They stay in work/ as
+benchmark labels for tools/bench_*.py and tools/train_aesthetic.py.
 """
 from __future__ import annotations
 
@@ -23,15 +26,10 @@ log = logging.getLogger("cull.pipeline")
 STAGES = [
     ("ingest", "cull.ingest", "exif.json"),
     ("local", "cull.local_scores", "local.json"),
-    # faces fills the same fields as rekog. rekog overlays it until it is removed.
     ("faces", "cull.faces", "faces.json"),
-    # scenes needs face_count from faces. rekog also overlays scene_tags until removed.
-    ("scenes", "cull.scenes", "scenes.json"),
-    ("rekog", "cull.rekog", "rekog.json"),
-    ("moments", "cull.moments", "moments.json"),
-    # aesthetic fills the taste fields locally. taste overlays it until removed.
-    ("aesthetic", "cull.aesthetic", "aesthetic.json"),
-    ("taste", "cull.taste", "taste.json"),
+    ("scenes", "cull.scenes", "scenes.json"),      # needs face_count from faces
+    ("moments", "cull.moments", "moments.json"),   # labels moments from scene_tags
+    ("aesthetic", "cull.aesthetic", "aesthetic.json"),  # needs faces and scenes
 ]
 STAGE_ORDER = [name for name, _, _ in STAGES]
 _CACHE = {name: cache for name, _, cache in STAGES}
@@ -97,7 +95,7 @@ def _merged_rows(limit: int | None, before: str | None = None) -> list[dict]:
     """Build the current merged image list from the ingest cache (the row source).
 
     Overlays every earlier stage's cache (merge order) so a stage sees fields
-    from the stages before it, e.g. rekog sees sharpness, taste sees faces.
+    from the stages before it, e.g. faces sees sharpness, aesthetic sees faces and scenes.
     """
     exif = _load_cache("ingest")
     paths = sorted(exif)
