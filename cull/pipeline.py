@@ -29,6 +29,8 @@ STAGES = [
     ("scenes", "cull.scenes", "scenes.json"),
     ("rekog", "cull.rekog", "rekog.json"),
     ("moments", "cull.moments", "moments.json"),
+    # aesthetic fills the taste fields locally. taste overlays it until removed.
+    ("aesthetic", "cull.aesthetic", "aesthetic.json"),
     ("taste", "cull.taste", "taste.json"),
 ]
 STAGE_ORDER = [name for name, _, _ in STAGES]

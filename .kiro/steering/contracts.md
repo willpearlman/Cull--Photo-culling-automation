@@ -42,7 +42,8 @@ These shapes are fixed. Code on both lanes builds against them.
 - `exposure_flags`: subset of `["underexposed", "overexposed"]`.
 - `scene_tags` vocabulary: `group`, `couple`, `candid`, `dance floor`, `food`,
   `indoor`, `outdoor`, `portrait`, `detail`.
-- `claude_score`: integer 1 to 10, or null if the frame was not sent to Claude.
+- `claude_score`: number 1 to 10, or null if unscored. The local aesthetic stage scores
+  every frame with one decimal. The legacy Claude taste stage gave integers to finalists only.
 - `overridden: true` means the user set `final_rating` by hand. Rating 5 forces
   a pick, rating 1 forces a reject.
 
@@ -99,11 +100,15 @@ def run(images: list[dict], cached: dict) -> dict:
 | --- | --- | --- | --- |
 | ingest | `ingest.py` (Will) | `work/exif.json` | path, preview, capture_time, burst_id, exposure_time, iso, focal_length, model |
 | local | `local_scores.py` (Will) | `work/local.json` | sharpness, exposure_flags |
-| rekog | `rekog.py` (Teammate 3) | `work/rekog.json` | face_count, eyes_closed_count, smile_count, scene_tags |
+| faces | `faces.py` (local) | `work/faces.json` | face_count, eyes_closed_count, smile_count, faces (raw per-face scores) |
+| scenes | `scenes.py` (local) | `work/scenes.json` | scene_tags, scene_scores, embedding (needs faces) |
+| rekog | `rekog.py` (AWS, legacy) | `work/rekog.json` | face_count, eyes_closed_count, smile_count, scene_tags |
 | moments | `moments.py` (Will) | `work/moments.json` | group_id, group_label (recomputes all images, ignores `cached`) |
-| taste | `taste.py` (Teammate 3) | `work/taste.json` | claude_score, claude_reason, intentional_eyes_closed, candid (bool) |
+| aesthetic | `aesthetic.py` (local) | `work/aesthetic.json` | claude_score, claude_reason, intentional_eyes_closed, candid (needs faces, scenes) |
+| taste | `taste.py` (AWS, legacy) | `work/taste.json` | claude_score, claude_reason, intentional_eyes_closed, candid (bool) |
 
-Merge order: ingest, local, rekog, moments, taste. If `candid` is true, merge
+Merge order: ingest, local, faces, scenes, rekog, moments, aesthetic, taste. The legacy AWS
+stages overlay the local ones while their caches exist. If `candid` is true, merge
 adds `"candid"` to `scene_tags`. A stage module that does not exist yet is
 skipped with a one-line message.
 

@@ -28,6 +28,11 @@
     }
   },
   "scored_only": {
+    "aesthetic": {
+      "yes": ["a beautiful professional photograph with great light and composition",
+              "an award-winning candid photo with genuine emotion"],
+      "no": ["a badly composed amateur snapshot", "a dull, cluttered, poorly lit photo"]
+    },
     "candid": {
       "yes": ["a candid photo of people who are not posing", "people caught in a natural moment"],
       "no": ["a posed photo of people looking at the camera", "people smiling for a group photo"]

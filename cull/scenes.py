@@ -9,13 +9,15 @@ Face-based tags keep rekog's rule on the faces stage's face_count: 1 face portra
 2 faces couple, 4+ faces (or a crowd) group, no faces plus a detail score detail.
 
 Returns scene_tags plus `scene_scores`, the raw score per tag, so thresholds can be
-re-tuned from the cache.
+re-tuned from the cache, and `embedding`, the image vector (float16, base64) that the
+aesthetic stage reuses.
 
 CLI: python -m cull.scenes --build-vocab
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -122,6 +124,16 @@ def scores(image_vecs, tags):
     return out
 
 
+def pack(vec):
+    """Image vector -> compact cache string (float16, base64)."""
+    return base64.b64encode(np.asarray(vec, dtype=np.float16).tobytes()).decode("ascii")
+
+
+def unpack(text):
+    """Cache string -> float32 unit vector."""
+    return np.frombuffer(base64.b64decode(text), dtype=np.float16).astype(np.float32)
+
+
 def tags_for(face_count, s, genre_tags=(), thresholds=None, genre_threshold=GENRE_THRESHOLD):
     """scene_tags from face_count and one image's {tag: score}, in rekog's tag order."""
     th = {**THRESHOLDS, **(thresholds or {})}
@@ -153,7 +165,7 @@ def run(images, cached, genre=None):
     for i, im in enumerate(todo):
         row = {t: round(float(v[i]), 4) for t, v in s.items()}
         out[im["path"]] = {"scene_tags": tags_for(im.get("face_count") or 0, row, genre_tags),
-                           "scene_scores": row}
+                           "scene_scores": row, "embedding": pack(vecs[i])}
     log.info("scenes: %d images", len(out))
     return out
 
