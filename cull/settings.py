@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 LIGHTROOM_MODES = ("classic", "cloud")
-DEFAULTS = {"lightroom": None}
+DEFAULTS = {"lightroom": None, "recent_shoots": []}
 
 
 def path() -> Path:
@@ -35,6 +35,8 @@ def load() -> dict:
     out.update({k: v for k, v in stored.items() if k in DEFAULTS})
     if out["lightroom"] not in LIGHTROOM_MODES:
         out["lightroom"] = None
+    if not isinstance(out["recent_shoots"], list):
+        out["recent_shoots"] = []
     return out
 
 
@@ -46,6 +48,9 @@ def update(changes: dict) -> dict:
             raise ValueError(f"unknown setting {key!r}")
         if key == "lightroom" and value not in LIGHTROOM_MODES:
             raise ValueError(f"lightroom must be one of {LIGHTROOM_MODES}")
+        if key == "recent_shoots" and not (
+                isinstance(value, list) and all(isinstance(v, str) for v in value)):
+            raise ValueError("recent_shoots must be a list of folder paths")
         current[key] = value
     p = path()
     p.parent.mkdir(parents=True, exist_ok=True)

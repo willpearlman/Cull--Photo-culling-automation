@@ -113,9 +113,13 @@ def _merged_rows(limit: int | None, before: str | None = None) -> list[dict]:
     return rows
 
 
-def run_stage(stage: str, limit: int | None) -> None:
+def run_stage(stage: str, limit: int | None, raise_errors: bool = False) -> None:
+    """Run one stage and update its cache. The CLI skips a failing stage with a message;
+    the app passes raise_errors=True so a half-processed shoot is never shown as ready."""
     run = _load_run(stage)
     if run is None:
+        if raise_errors:
+            raise RuntimeError(f"stage {stage} is missing")
         print(f"skipping {stage}: not built yet")
         return
 
@@ -129,6 +133,8 @@ def run_stage(stage: str, limit: int | None) -> None:
         produced = run(images, cached_arg)
     except Exception as exc:  # a stage failure must not corrupt the cache
         log.error("%s stage raised %s: %s", stage, type(exc).__name__, exc)
+        if raise_errors:
+            raise
         print(f"skipping {stage}: run failed ({type(exc).__name__}: {exc})")
         return
 

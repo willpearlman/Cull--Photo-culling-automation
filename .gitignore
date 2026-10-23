@@ -11,3 +11,5 @@ previews/
 work/
 *.overrides.json
 models/
+build/
+dist/

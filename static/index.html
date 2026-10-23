@@ -14,6 +14,7 @@
     <button id="run-btn" type="button">Run</button>
     <button id="export-btn" type="button" disabled>Export</button>
     <button id="lr-mode" type="button" class="link" title="Which Lightroom you use"></button>
+    <button id="open-btn" type="button" class="link" title="Open another folder of RAW files">Open shoot</button>
     <span id="spinner" class="spinner" hidden></span>
     <span id="status" class="status">loading…</span>
     <label class="tile-size">Size
@@ -89,6 +90,28 @@
     <main id="grid">
       <!-- Moments render as rows here. -->
     </main>
+  </div>
+
+  <!-- Open a shoot: pick the folder of RAW files, then watch it process. -->
+  <div id="open" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="open-title">
+      <h2 id="open-title">Open a shoot</h2>
+      <p class="muted">Choose the folder with your RAW files (a card or a copy on disk). Cull
+        never changes them: previews and scores are kept in its own folder, and sidecars are
+        written only when you export.</p>
+      <div id="open-progress" hidden>
+        <p id="open-stage"></p>
+        <div class="progress"><div id="open-bar"></div></div>
+        <p id="open-detail" class="muted small"></p>
+      </div>
+      <p id="open-error" class="error" hidden></p>
+      <h3 id="open-recent-head" hidden>Recent</h3>
+      <div id="open-recent" class="recent-list"></div>
+      <div class="dialog-actions">
+        <button id="open-cancel" type="button" class="secondary" hidden>Cancel</button>
+        <button id="open-choose" type="button">Choose folder&hellip;</button>
+      </div>
+    </div>
   </div>
 
   <!-- First-launch setup: which Lightroom the photographer uses. -->

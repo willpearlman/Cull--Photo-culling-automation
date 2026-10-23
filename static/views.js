@@ -33,13 +33,102 @@ async function setView(view) {
 // state.settings = {lightroom, guide, modes} from /api/settings.
 
 function dialogOpen() {
-  return !document.getElementById("setup").hidden || !document.getElementById("guide").hidden;
+  return ["setup", "guide", "open"].some((id) => !document.getElementById(id).hidden);
 }
 
 function closeDialogs() {
   // The setup page cannot be dismissed until a mode is chosen.
   if (state.settings && state.settings.lightroom) document.getElementById("setup").hidden = true;
   document.getElementById("guide").hidden = true;
+  // The open screen can be dismissed only back to a shoot that is loaded and not processing.
+  if (state.images.length && !state.shootPolling) document.getElementById("open").hidden = true;
+}
+
+// --- Open a shoot ------------------------------------------------------------
+
+function showOpenScreen(shoot) {
+  setStatus("");  // clears the initial "loading…"
+  const recent = (shoot && shoot.recent) || [];
+  const list = document.getElementById("open-recent");
+  list.innerHTML = "";
+  for (const folder of recent) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = folder;
+    btn.title = folder;
+    btn.addEventListener("click", () => startShoot(folder));
+    list.appendChild(btn);
+  }
+  document.getElementById("open-recent-head").hidden = recent.length === 0;
+  document.getElementById("open-cancel").hidden = state.images.length === 0;
+  document.getElementById("open").hidden = false;
+  if (shoot && shoot.state === "running") pollShoot();
+}
+
+async function chooseFolder() {
+  let folder = null;
+  if (window.pywebview && window.pywebview.api) {
+    folder = await window.pywebview.api.pick_folder();  // native folder dialog in the app
+  } else {
+    folder = window.prompt("Folder with your RAW files:");  // development in a browser
+  }
+  if (folder) startShoot(folder);
+}
+
+async function startShoot(folder) {
+  const error = document.getElementById("open-error");
+  error.hidden = true;
+  const res = await fetch("/api/shoot", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    error.textContent = data.detail || "Could not open that folder.";
+    error.hidden = false;
+    return;
+  }
+  pollShoot();
+}
+
+// Poll processing progress; reload into the shoot when it is ready.
+async function pollShoot() {
+  if (state.shootPolling) return;
+  state.shootPolling = true;
+  document.getElementById("open-choose").disabled = true;
+  document.getElementById("open-cancel").hidden = true;
+  document.getElementById("open-recent").hidden = true;
+  document.getElementById("open-recent-head").hidden = true;
+  document.getElementById("open-progress").hidden = false;
+  for (;;) {
+    let s;
+    try {
+      s = await getJSON("/api/shoot");
+    } catch (err) {
+      await new Promise((r) => setTimeout(r, 1000));
+      continue;
+    }
+    const pct = Math.round((s.progress || 0) * 100);
+    document.getElementById("open-bar").style.width = pct + "%";
+    document.getElementById("open-stage").textContent =
+      s.state === "ready" ? "Ready" : (s.label || "Starting") + " · " + pct + "%";
+    document.getElementById("open-detail").textContent =
+      s.frames + " RAW files · " + Math.round(s.elapsed || 0) + " s · " + (s.folder || "");
+    if (s.state === "ready") {
+      location.reload();
+      return;
+    }
+    if (s.state === "error") {
+      state.shootPolling = false;
+      const error = document.getElementById("open-error");
+      error.textContent = s.message;
+      error.hidden = false;
+      document.getElementById("open-choose").disabled = false;
+      document.getElementById("open-recent").hidden = false;
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
 
 function renderModeButton() {

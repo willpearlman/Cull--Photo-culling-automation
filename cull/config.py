@@ -1,24 +1,64 @@
-"""Shared settings. Change only with both people agreeing."""
+"""Shared settings and the paths of the shoot that is open.
+
+Every module reads the shoot paths (CULL_ROOT, SHOOT_DIR, PREVIEW_DIR, WORK_DIR, THUMB_DIR,
+SCORES_PATH, OVERRIDES_PATH) from here at call time, so set_shoot() switches shoots while the
+app runs.
+"""
+import hashlib
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# Packaged app (PyInstaller): code, static files, fixtures and models sit under sys._MEIPASS.
+FROZEN = getattr(sys, "frozen", False)
+REPO_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
 load_dotenv(REPO_ROOT / ".env")
 
-CULL_ROOT = Path(os.getenv("CULL_ROOT", REPO_ROOT / "demo")).resolve()
-SHOOT_DIR = CULL_ROOT / "shoot"
-PREVIEW_DIR = CULL_ROOT / "previews"
-WORK_DIR = CULL_ROOT / "work"
-THUMB_DIR = WORK_DIR / "thumbs"
+if sys.platform == "win32":
+    APP_DATA = Path(os.getenv("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Cull"
+elif sys.platform == "darwin":
+    APP_DATA = Path.home() / "Library" / "Application Support" / "Cull"
+else:
+    APP_DATA = Path.home() / ".cache" / "cull"
 
-_scores = os.getenv("SCORES_PATH")
-SCORES_PATH = (REPO_ROOT / _scores).resolve() if _scores and not Path(_scores).is_absolute() \
-    else Path(_scores) if _scores else WORK_DIR / "scores.json"
+# exiftool: bundled in the packaged app, from PATH in development.
+EXIFTOOL = str(REPO_ROOT / "exiftool" / "exiftool.exe") if FROZEN and sys.platform == "win32" \
+    else os.getenv("EXIFTOOL", "exiftool")
 
-# Overrides live beside scores.json, never inside it, so fixtures stay clean.
-OVERRIDES_PATH = SCORES_PATH.with_name(SCORES_PATH.stem + ".overrides.json")
+# Development: CULL_ROOT in .env opens that shoot at startup. The app starts with none open.
+SHOOT_FROM_ENV = bool(os.getenv("CULL_ROOT"))
+CULL_ROOT = SHOOT_DIR = PREVIEW_DIR = WORK_DIR = THUMB_DIR = SCORES_PATH = OVERRIDES_PATH = None
+
+
+def cache_root(raw_dir):
+    """Where previews and caches for a RAW folder live: outside it, keyed by its full path."""
+    raw_dir = Path(raw_dir).resolve()
+    key = hashlib.sha1(str(raw_dir).lower().encode("utf-8")).hexdigest()[:10]
+    return APP_DATA / "shoots" / f"{raw_dir.name}-{key}"
+
+
+def set_shoot(folder):
+    """Open a shoot. `folder` is either the folder of RAW files (the app's normal case:
+    previews and caches go to cache_root) or a development work folder holding shoot/*.ARW."""
+    global CULL_ROOT, SHOOT_DIR, PREVIEW_DIR, WORK_DIR, THUMB_DIR, SCORES_PATH, OVERRIDES_PATH
+    folder = Path(folder).resolve()
+    if (folder / "shoot").is_dir():
+        CULL_ROOT, SHOOT_DIR = folder, folder / "shoot"
+    else:
+        CULL_ROOT, SHOOT_DIR = cache_root(folder), folder
+    PREVIEW_DIR = CULL_ROOT / "previews"
+    WORK_DIR = CULL_ROOT / "work"
+    THUMB_DIR = WORK_DIR / "thumbs"
+    scores = os.getenv("SCORES_PATH")
+    SCORES_PATH = (REPO_ROOT / scores).resolve() if scores and not Path(scores).is_absolute() \
+        else Path(scores) if scores else WORK_DIR / "scores.json"
+    # Overrides live beside scores.json, never inside it, so fixtures stay clean.
+    OVERRIDES_PATH = SCORES_PATH.with_name(SCORES_PATH.stem + ".overrides.json")
+
+
+set_shoot(os.getenv("CULL_ROOT", REPO_ROOT / "demo"))
 
 # Shoot genre: picks the extra scene tags (fixtures/vocab.json) and the agent's tag vocabulary.
 # "wedding" or "event" (base tags only).

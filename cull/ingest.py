@@ -1,4 +1,4 @@
-"""Ingest stage: extract embedded previews, read EXIF, group bursts.
+﻿"""Ingest stage: extract embedded previews, read EXIF, group bursts.
 
 Exposes run(images, cached) per contracts.md. pipeline.py owns the cache file;
 this module only computes and returns rows for newly seen images.
@@ -109,7 +109,7 @@ def run(images: list[dict], cached: dict) -> dict:
     need_preview = [p for p in todo if not (config.PREVIEW_DIR / f"{p.stem}.jpg").exists()]
 
     meta_by_path: dict[Path, dict] = {}
-    with ExifToolHelper() as et:
+    with ExifToolHelper(executable=config.EXIFTOOL) as et:
         # One stay-open process; small chunks plus -q -q -m keep stderr tiny so
         # the pipe buffer never fills (PyExifTool deadlocks on Windows if it does).
         for start in range(0, len(need_preview), CHUNK):

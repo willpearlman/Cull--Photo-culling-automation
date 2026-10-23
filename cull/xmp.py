@@ -1,4 +1,4 @@
-"""XMP sidecar export.
+﻿"""XMP sidecar export.
 
 Writes Lightroom-readable .xmp sidecars next to each ARW. Originals are never
 touched. One stay-open ExifToolHelper per batch; per image we call
@@ -60,7 +60,7 @@ def export(decisions: dict, images: list[dict]) -> int:
     by_path = {img["path"]: img for img in images}
     owned = _cull_keywords()
     written = 0
-    with ExifToolHelper() as et:
+    with ExifToolHelper(executable=config.EXIFTOOL) as et:
         for path, decision in decisions.items():
             rating = decision.get("rating")
             if rating is None:
@@ -75,7 +75,7 @@ def _export_from_scores(images: list[dict]) -> int:
     """CLI path: write each image's final_rating/final_label, skip nulls."""
     owned = _cull_keywords()
     written = 0
-    with ExifToolHelper() as et:
+    with ExifToolHelper(executable=config.EXIFTOOL) as et:
         for image in images:
             rating = image.get("final_rating")
             if rating is None:

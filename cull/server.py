@@ -10,11 +10,36 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from cull import config, solver
+from cull import config, shoots, solver
 
 app = FastAPI(title="Cull")
 
 _STATIC_DIR = config.REPO_ROOT / "static"
+
+# Development: a processed shoot named in .env opens at startup. The app starts with none.
+if config.SHOOT_FROM_ENV and config.SCORES_PATH.exists():
+    shoots.mark_ready(config.CULL_ROOT)
+
+
+@app.get("/api/shoot")
+def api_shoot():
+    """The open shoot and its processing progress."""
+    from cull import settings
+    return {**shoots.status(), "recent": settings.load()["recent_shoots"]}
+
+
+@app.post("/api/shoot")
+def api_shoot_open(body: dict):
+    folder = (body or {}).get("folder")
+    if not folder:
+        raise HTTPException(status_code=400, detail="folder required")
+    try:
+        shoots.open_folder(folder)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return api_shoot()
 
 
 @app.middleware("http")
@@ -29,6 +54,9 @@ async def _revalidate_ui(request, call_next):
 
 
 def _load_scores():
+    """Scores of the open shoot. Empty until a shoot is processed, so the UI can load."""
+    if shoots.status()["state"] != "ready" or not config.SCORES_PATH.exists():
+        return {"images": []}
     with open(config.SCORES_PATH, encoding="utf-8") as fh:
         return json.load(fh)
 

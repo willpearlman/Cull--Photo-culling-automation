@@ -1,4 +1,7 @@
 anthropic>=1.17
+# Desktop app window (python -m cull.desktop). PyInstaller only builds the package.
+pywebview>=6.2
+pyinstaller>=6.22
 fastapi>=0.115
 uvicorn[standard]>=0.30
 python-dotenv>=1.0

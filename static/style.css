@@ -85,8 +85,20 @@ body {
 }
 #topbar button:disabled { opacity: 0.5; cursor: default; }
 #export-btn { background: #3a3f47; }
-#topbar #lr-mode { background: none; color: var(--muted); padding: 6px 4px; font-size: 12px; }
-#topbar #lr-mode:hover { color: var(--text); }
+#topbar #lr-mode, #topbar #open-btn {
+  background: none; color: var(--muted); padding: 6px 4px; font-size: 12px;
+}
+#topbar #lr-mode:hover, #topbar #open-btn:hover { color: var(--text); }
+.progress { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+#open-bar { height: 100%; width: 0; background: #2f6df0; transition: width 0.4s; }
+.error { color: var(--reject); font-size: 13px; }
+.recent-list { display: grid; gap: 6px; }
+.recent-list button {
+  text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 4px; padding: 8px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-list button:hover { border-color: #2f6df0; }
 
 /* Setup page and export guide. */
 .dialog-backdrop {

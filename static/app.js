@@ -32,6 +32,7 @@ const state = {
   busy: false,       // lock: one override round-trip at a time
   focusPath: null,   // path of the keyboard-focused tile (survives render)
   loupeOpen: false,  // full-res loupe overlay visible
+  shootPolling: false,  // a shoot is processing and the open screen is polling progress
   // View filter: narrows which tiles render. Never touches the status bar,
   // orderedPaths honors it, so navigation and the loupe only visit shown tiles.
   filter: { status: "all", issues: new Set(), tags: new Set() }
@@ -770,6 +771,22 @@ function initTileSlider() {
 async function init() {
   initTileSlider();
   loadSettings();  // shows the Lightroom setup page on first launch
+  wireControls();
+  let shoot = null;
+  try {
+    shoot = await getJSON("/api/shoot");
+  } catch (err) {
+    setStatus("error: " + err.message);
+    return;
+  }
+  if (shoot.state === "ready") {
+    await loadShoot();
+  } else {
+    showOpenScreen(shoot);
+  }
+}
+
+async function loadShoot() {
   try {
     const scores = await getJSON("/api/scores");
     state.images = scores.images || [];
@@ -788,8 +805,15 @@ async function init() {
   } catch (err) {
     setStatus("error: " + err.message);
   }
+}
 
+function wireControls() {
   document.getElementById("run-btn").addEventListener("click", runInstruction);
+  document.getElementById("open-btn").addEventListener("click", async () => {
+    showOpenScreen(await getJSON("/api/shoot"));
+  });
+  document.getElementById("open-choose").addEventListener("click", chooseFolder);
+  document.getElementById("open-cancel").addEventListener("click", closeDialogs);
   document.getElementById("replan-btn").addEventListener("click", replan);
   document.getElementById("export-btn").addEventListener("click", openExportGuide);
   document.getElementById("lr-mode").addEventListener("click", openSetup);

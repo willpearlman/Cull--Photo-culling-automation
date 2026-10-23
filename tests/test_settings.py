@@ -1,4 +1,4 @@
-"""User settings store, Lightroom guides, and the settings/export API."""
+﻿"""User settings store, Lightroom guides, and the settings/export API."""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,7 +13,7 @@ def store(tmp_path, monkeypatch):
 
 
 def test_unset_until_chosen_then_persisted(store):
-    assert settings.load() == {"lightroom": None}
+    assert settings.load() == settings.DEFAULTS
     settings.update({"lightroom": "cloud"})
     assert store.exists()
     assert settings.load()["lightroom"] == "cloud"
@@ -24,9 +24,11 @@ def test_bad_values_are_rejected_and_corrupt_files_ignored(store):
         settings.update({"lightroom": "photoshop"})
     with pytest.raises(ValueError):
         settings.update({"theme": "dark"})
+    with pytest.raises(ValueError):
+        settings.update({"recent_shoots": "C:/one"})
     store.parent.mkdir(parents=True)
     store.write_text("{not json", encoding="utf-8")
-    assert settings.load() == {"lightroom": None}
+    assert settings.load() == settings.DEFAULTS
 
 
 def test_each_mode_has_a_complete_guide():
