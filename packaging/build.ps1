@@ -13,8 +13,10 @@ $tool = Join-Path $repo 'dist\Cull\_internal\exiftool'
 if (Test-Path "$tool\ExifTool.exe") { Rename-Item "$tool\ExifTool.exe" 'exiftool.exe' -Force }
 if (Test-Path "$repo\dist\Cull\_internal\.env") { throw ".env must never be bundled" }
 
-$iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-if (Test-Path $iscc) {
+$iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+          "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+if ($iscc) {
     & $iscc packaging\installer.iss
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
 } else {
