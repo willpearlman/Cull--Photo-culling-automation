@@ -2,7 +2,7 @@
 
 One job at a time. open_folder() switches config to the folder, then a thread runs every
 pipeline stage and merge. status() reports the state, current stage and overall progress
-(weighted by each stage's share of a measured run: 749 frames, 143 s).
+(weighted by each stage's share of a measured run: 749 frames, 91 s).
 """
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from pathlib import Path
 from cull import config, pipeline, settings
 
 RAW_EXTENSIONS = (".arw",)
-# Share of total time per stage, from the shoot2 fresh run (ingest 67 s, scenes 41 s, ...).
-WEIGHTS = {"ingest": 0.47, "local": 0.05, "faces": 0.19, "scenes": 0.28, "moments": 0.003,
-           "aesthetic": 0.005, "merge": 0.002}
+# Share of total time per stage, from the shoot2 fresh run (ingest 19 s, scenes 38 s, ...).
+WEIGHTS = {"ingest": 0.209, "local": 0.074, "faces": 0.296, "scenes": 0.418, "moments": 0.001,
+           "aesthetic": 0.001, "merge": 0.001}
 STAGE_NAMES = {"ingest": "Reading RAW files", "local": "Checking sharpness and exposure",
                "faces": "Finding faces and blinks", "scenes": "Recognizing scenes",
                "moments": "Grouping moments", "aesthetic": "Scoring frames",

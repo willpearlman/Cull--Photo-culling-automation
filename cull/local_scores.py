@@ -5,6 +5,7 @@ Exposes run(images, cached) per contracts.md. Reads preview JPEGs only.
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -57,6 +58,7 @@ def run(images: list[dict], cached: dict) -> dict:
     Returns {path: {sharpness, exposure_flags}} for images not in cache.
     """
     rows: dict[str, dict] = {}
+    todo = []
     for img in images:
         path = img.get("path")
         if not path or path in cached:
@@ -65,7 +67,10 @@ def run(images: list[dict], cached: dict) -> dict:
         if not preview:
             rows[path] = {"sharpness": None, "exposure_flags": [], "error": "no preview"}
             continue
-        preview_path = config.CULL_ROOT / preview
-        rows[path] = _score(preview_path)
+        todo.append((path, config.CULL_ROOT / preview))
+    # OpenCV releases the GIL while it decodes and filters, so threads use every core.
+    with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as pool:
+        for (path, _), row in zip(todo, pool.map(lambda t: _score(t[1]), todo)):
+            rows[path] = row
     log.info("local_scores: scored %d images", len(rows))
     return rows

@@ -53,12 +53,22 @@ async def _revalidate_ui(request, call_next):
     return response
 
 
+_scores_cache = (None, None)  # (file identity, parsed scores)
+
+
 def _load_scores():
     """Scores of the open shoot. Empty until a shoot is processed, so the UI can load."""
+    global _scores_cache
     if shoots.status()["state"] != "ready" or not config.SCORES_PATH.exists():
         return {"images": []}
-    with open(config.SCORES_PATH, encoding="utf-8") as fh:
-        return json.load(fh)
+    # Parsed once per version of the file: every plan, run and override reads the scores.
+    # Callers copy the rows they change, so the cached rows are never modified.
+    stat = config.SCORES_PATH.stat()
+    key = (str(config.SCORES_PATH), stat.st_mtime_ns, stat.st_size)
+    if _scores_cache[0] != key:
+        with open(config.SCORES_PATH, encoding="utf-8") as fh:
+            _scores_cache = (key, json.load(fh))
+    return _scores_cache[1]
 
 
 def _load_overrides():
@@ -259,9 +269,9 @@ def thumb(name: str):
     if not dst.exists():
         try:
             from PIL import Image
-            with Image.open(src) as im:
-                im.thumbnail((400, 400))
-                im.convert("RGB").save(dst, "JPEG")
+            from cull import ingest
+            with Image.open(src) as im:  # shoots processed before thumbnails were pre-built
+                ingest.write_thumb(im, dst)
         except Exception:
             return FileResponse(src)
     return FileResponse(dst, media_type="image/jpeg")

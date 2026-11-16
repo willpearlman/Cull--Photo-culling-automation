@@ -80,3 +80,23 @@ def test_api_reports_no_shoot_and_empty_scores_until_one_is_ready(isolated):
     assert client.get("/api/shoot").json()["state"] == "idle"
     assert client.get("/api/scores").json()["images"] == []
     assert client.post("/api/shoot", json={"folder": str(isolated / "nope")}).status_code == 400
+
+
+def test_scores_are_parsed_once_and_reloaded_when_the_file_changes(isolated, monkeypatch):
+    import json
+    from cull import server
+    card = _raw_folder(isolated)
+    config.set_shoot(card)
+    config.SCORES_PATH.parent.mkdir(parents=True)
+    config.SCORES_PATH.write_text(json.dumps({"images": [{"path": "a"}]}))
+    shoots.mark_ready(card)
+    first = server._load_scores()
+    assert server._load_scores() is first  # same parsed object, no second read
+    assert server._images_with_overrides()[0] is not first["images"][0]  # callers get copies
+    config.SCORES_PATH.write_text(json.dumps({"images": [{"path": "a"}, {"path": "b"}]}))
+    assert len(server._load_scores()["images"]) == 2
+
+
+def test_stage_weights_cover_the_whole_bar():
+    assert set(shoots.WEIGHTS) == {*pipeline.STAGE_ORDER, "merge"}
+    assert abs(sum(shoots.WEIGHTS.values()) - 1.0) < 1e-6

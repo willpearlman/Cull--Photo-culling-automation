@@ -73,7 +73,9 @@ ANTHROPIC_AGENT_MODEL = os.getenv("ANTHROPIC_AGENT_MODEL", "claude-opus-5-5")
 # low | medium | high | xhigh | max. Plans are a short translation task.
 ANTHROPIC_EFFORT = os.getenv("ANTHROPIC_EFFORT", "low")
 
-MAX_WORKERS = int(os.getenv("MAX_WORKERS", "6"))
+# Threads for the per-frame stages: every core, capped so a workstation does not open dozens
+# of face models.
+MAX_WORKERS = int(os.getenv("MAX_WORKERS") or max(2, min(os.cpu_count() or 4, 12)))
 MIN_FACE_WIDTH = float(os.getenv("MIN_FACE_WIDTH", "0.025"))
 MIN_SHARPNESS = float(os.getenv("MIN_SHARPNESS", "170"))
 # A gap longer than this between consecutive frames starts a new moment.

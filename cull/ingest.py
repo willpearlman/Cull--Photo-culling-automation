@@ -2,10 +2,15 @@
 
 Exposes run(images, cached) per contracts.md. pipeline.py owns the cache file;
 this module only computes and returns rows for newly seen images.
+
+Speed: exiftool is slow per file, so it runs once per RAW (metadata plus the position of the
+embedded preview) in several processes at once. Python then copies the preview bytes straight
+out of the RAW. exiftool extracts a preview itself only when that direct read fails.
 """
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import imagehash
@@ -22,12 +27,17 @@ BURST_GAP_S = 2.0
 PHASH_MAX = 10
 
 # Files per exiftool execute call, and flags that silence warnings/minor errors.
-CHUNK = 100
+CHUNK = 50
+# exiftool processes reading metadata at once. More than 4 measured no faster.
+META_PROCESSES = 4
+THUMB_SIZE = (400, 400)  # grid thumbnail, served by /thumb
 _QUIET = ["-q", "-q", "-m"]
 _META_TAGS = [
     "DateTimeOriginal", "SubSecTimeOriginal", "Orientation",
     "ExposureTime", "ISO", "FocalLength", "Model",
 ]
+# Where the embedded preview JPEG sits inside the RAW file.
+_OFFSET_TAGS = ["PreviewImageStart", "PreviewImageLength"]
 
 # ARW Orientation tag value -> degrees to rotate the preview counter-clockwise
 # so it ends up upright. Pillow rotate is counter-clockwise.
@@ -83,10 +93,89 @@ def _rotate_preview(preview_path: Path, orientation) -> None:
         log.warning("rotate failed for %s: %s", preview_path.name, exc)
 
 
-def _phash(preview_path: Path):
+def _tag(tags: dict, name: str):
+    """A tag's value whatever group exiftool reports it under (EXIF:, MakerNotes:, ...)."""
+    for key, value in tags.items():
+        if key == name or key.endswith(":" + name):
+            return value
+    return None
+
+
+def _read_meta(files: list[Path]) -> dict[Path, dict]:
+    """{resolved path: tags} for every file, from several stay-open exiftool processes."""
+    chunks = [files[i:i + CHUNK] for i in range(0, len(files), CHUNK)]
+    n = min(META_PROCESSES, len(chunks))
+
+    def worker(mine):
+        out = {}
+        # Small chunks plus -q -q -m keep stderr tiny so the pipe buffer never fills
+        # (PyExifTool deadlocks on Windows if it does).
+        with ExifToolHelper(executable=config.EXIFTOOL) as et:
+            for chunk in mine:
+                for tags in et.get_tags([str(p) for p in chunk],
+                                        tags=_META_TAGS + _OFFSET_TAGS, params=_QUIET):
+                    src = tags.get("SourceFile")
+                    if src:
+                        out[Path(src).resolve()] = tags
+        return out
+
+    meta: dict[Path, dict] = {}
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        for part in pool.map(worker, [chunks[i::n] for i in range(n)]):
+            meta.update(part)
+    return meta
+
+
+def _copy_preview(src: Path, tags: dict, preview: Path) -> bool:
+    """Copy the embedded preview JPEG straight out of the RAW. False if it is not where the
+    tags say, so the caller can fall back to exiftool."""
     try:
-        with Image.open(preview_path) as im:
-            return imagehash.phash(im)
+        start = int(_tag(tags, "PreviewImageStart"))
+        length = int(_tag(tags, "PreviewImageLength"))
+        with open(src, "rb") as fh:
+            fh.seek(start)
+            data = fh.read(length)
+    except (TypeError, ValueError, OSError):
+        return False
+    if length < 4 or len(data) != length or data[:2] != b"\xff\xd8":
+        return False
+    tmp = preview.with_suffix(".part")
+    tmp.write_bytes(data)
+    tmp.replace(preview)
+    return True
+
+
+def _extract_with_exiftool(files: list[Path]) -> None:
+    """The slow path: exiftool writes each file's preview into PREVIEW_DIR."""
+    with ExifToolHelper(executable=config.EXIFTOOL) as et:
+        for start in range(0, len(files), CHUNK):
+            chunk = files[start:start + CHUNK]
+            try:
+                et.execute(
+                    *_QUIET, "-b", "-PreviewImage",
+                    "-w", str(config.PREVIEW_DIR / "%f.jpg"),
+                    *[str(p) for p in chunk],
+                )
+            except ExifToolExecuteError as exc:  # e.g. a file with no preview
+                log.warning("ingest: preview chunk at %d had errors: %s", start, exc.stderr)
+
+
+def write_thumb(im: Image.Image, dst: Path) -> None:
+    """Save the grid thumbnail of an opened preview."""
+    im.thumbnail(THUMB_SIZE)
+    im.convert("RGB").save(dst, "JPEG")
+
+
+def _hash_and_thumb(preview: Path):
+    """The preview's phash (None if unreadable). Also writes the grid thumbnail from the same
+    decode, so the grid never builds thumbnails while the photographer scrolls."""
+    try:
+        with Image.open(preview) as im:
+            phash = imagehash.phash(im)
+            thumb = config.THUMB_DIR / preview.name
+            if not thumb.exists():
+                write_thumb(im, thumb)
+            return phash
     except (OSError, ValueError):
         return None
 
@@ -97,6 +186,7 @@ def run(images: list[dict], cached: dict) -> dict:
     Returns {path: {ingest fields}} for ARW files not already in cache.
     """
     config.PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    config.THUMB_DIR.mkdir(parents=True, exist_ok=True)
 
     arw_files = sorted(config.SHOOT_DIR.glob("*.ARW"))
     todo = [p for p in arw_files if _rel(p) not in cached]
@@ -104,33 +194,36 @@ def run(images: list[dict], cached: dict) -> dict:
         log.info("ingest: nothing new (%d already cached)", len(cached))
         return {}
 
-    # Only extract previews that are missing; existing JPEGs would make
-    # exiftool emit "already exists" errors on stderr for every file.
-    need_preview = [p for p in todo if not (config.PREVIEW_DIR / f"{p.stem}.jpg").exists()]
+    meta_by_path = _read_meta(todo)
+    log.info("ingest: metadata for %d/%d", len(meta_by_path), len(todo))
 
-    meta_by_path: dict[Path, dict] = {}
-    with ExifToolHelper(executable=config.EXIFTOOL) as et:
-        # One stay-open process; small chunks plus -q -q -m keep stderr tiny so
-        # the pipe buffer never fills (PyExifTool deadlocks on Windows if it does).
-        for start in range(0, len(need_preview), CHUNK):
-            chunk = need_preview[start:start + CHUNK]
-            try:
-                et.execute(
-                    *_QUIET, "-b", "-PreviewImage",
-                    "-w", str(config.PREVIEW_DIR / "%f.jpg"),
-                    *[str(p) for p in chunk],
-                )
-            except ExifToolExecuteError as exc:  # e.g. a file with no preview
-                log.warning("ingest: preview chunk at %d had errors: %s", start, exc.stderr)
-            log.info("ingest: previews %d/%d", start + len(chunk), len(need_preview))
+    def preview_of(src: Path) -> Path:
+        return config.PREVIEW_DIR / f"{src.stem}.jpg"
 
-        for start in range(0, len(todo), CHUNK):
-            chunk = todo[start:start + CHUNK]
-            for tags in et.get_tags([str(p) for p in chunk], tags=_META_TAGS, params=_QUIET):
-                src = tags.get("SourceFile")
-                if src:
-                    meta_by_path[Path(src).resolve()] = tags
-            log.info("ingest: %d/%d", start + len(chunk), len(todo))
+    def orientation(src: Path):
+        tags = meta_by_path.get(src.resolve(), {})
+        return tags.get("EXIF:Orientation") or tags.get("Orientation")
+
+    def copy(src: Path) -> bool:
+        ok = _copy_preview(src, meta_by_path.get(src.resolve(), {}), preview_of(src))
+        if ok:
+            _rotate_preview(preview_of(src), orientation(src))
+        return ok
+
+    # Only write previews that are missing: an existing one is already upright.
+    need_preview = [p for p in todo if not preview_of(p).exists()]
+    with ThreadPoolExecutor(max_workers=config.MAX_WORKERS) as pool:
+        copied = list(pool.map(copy, need_preview))
+        slow = [p for p, ok in zip(need_preview, copied) if not ok]
+        if slow:
+            log.info("ingest: exiftool extracts %d previews", len(slow))
+            _extract_with_exiftool(slow)
+            for src in slow:
+                if preview_of(src).exists():
+                    _rotate_preview(preview_of(src), orientation(src))
+        have = [p for p in todo if preview_of(p).exists()]
+        hashes = dict(zip(have, pool.map(lambda p: _hash_and_thumb(preview_of(p)), have)))
+    log.info("ingest: previews %d/%d", len(have), len(todo))
 
     rows: dict[str, dict] = {}
     by_key: list[tuple[tuple[str, int], str, Path]] = []
@@ -138,11 +231,7 @@ def run(images: list[dict], cached: dict) -> dict:
         tags = meta_by_path.get(src.resolve(), {})
         rel = _rel(src)
         preview = config.PREVIEW_DIR / f"{src.stem}.jpg"
-        if preview.exists():
-            _rotate_preview(preview, tags.get("EXIF:Orientation") or tags.get("Orientation"))
-            preview_rel = _rel(preview)
-        else:
-            preview_rel = None
+        preview_rel = _rel(preview) if preview.exists() else None
         rows[rel] = {
             "path": rel,
             "preview": preview_rel,
@@ -152,18 +241,17 @@ def run(images: list[dict], cached: dict) -> dict:
             "focal_length": tags.get("EXIF:FocalLength") or tags.get("FocalLength"),
             "model": tags.get("EXIF:Model") or tags.get("Model"),
         }
-        by_key.append((_capture_key(tags), rel, preview))
+        by_key.append((_capture_key(tags), rel, hashes.get(src)))
 
     # Bursts: sort by capture time then filename, split on time gap or phash jump.
     by_key.sort(key=lambda t: (t[0][0], t[1]))
     burst_n = 0
     prev_key: tuple[str, int] | None = None
     prev_hash = None
-    for key, rel, preview in by_key:
+    for key, rel, cur_hash in by_key:
         new_burst = prev_key is None
         if prev_key is not None:
             gap = _seconds_between(prev_key, key)
-            cur_hash = _phash(preview)
             hash_jump = (
                 prev_hash is not None
                 and cur_hash is not None
@@ -173,7 +261,7 @@ def run(images: list[dict], cached: dict) -> dict:
                 new_burst = True
             prev_hash = cur_hash if cur_hash is not None else prev_hash
         else:
-            prev_hash = _phash(preview)
+            prev_hash = cur_hash
         if new_burst:
             burst_n += 1
         rows[rel]["burst_id"] = f"B{burst_n:03d}"

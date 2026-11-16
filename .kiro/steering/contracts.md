@@ -139,7 +139,7 @@ First matching tag wins. No match: no label.
 | POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int, "guide", "learned_from": int}` (guide: the Lightroom steps for the chosen mode, or null. learned_from: frames personal taste now learns from, 0 if the photographer changed nothing or there are too few; see `cull/personal.py`) |
 | GET | `/api/settings` | none | `{"lightroom": "classic" \| "cloud" \| null, "guide", "modes"}` |
 | POST | `/api/settings` | `{"lightroom": "classic" \| "cloud"}` | same as GET. Saved per user (`cull/settings.py`), 400 on a bad value |
-| GET | `/thumb/{name}` | none | 400px JPEG, cached in `work/thumbs/` |
+| GET | `/thumb/{name}` | none | 400px JPEG from `work/thumbs/`, pre-built by the ingest stage (built on request for older shoots) |
 | GET | `/preview/{name}` | none | Full-resolution preview JPEG from `previews/`, served as-is (read only). Used for grid tiles at 3 columns or fewer |
 
 ## Work folder layout
