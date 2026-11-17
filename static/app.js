@@ -817,6 +817,17 @@ function wireControls() {
   document.getElementById("replan-btn").addEventListener("click", replan);
   document.getElementById("export-btn").addEventListener("click", openExportGuide);
   document.getElementById("lr-mode").addEventListener("click", openSetup);
+  document.getElementById("license-btn").addEventListener("click", openLicense);
+  document.getElementById("license-close").addEventListener("click", closeDialogs);
+  document.getElementById("license-remove").addEventListener("click", () => saveLicense(null));
+  document.getElementById("license-save").addEventListener("click", () => {
+    const key = document.getElementById("license-key").value.trim();
+    if (key) saveLicense(key);
+  });
+  document.getElementById("license-key").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("license-save").click();
+    if (e.key === "Escape") closeDialogs();
+  });
   document.getElementById("guide-write").addEventListener("click", exportSidecars);
   document.getElementById("guide-close").addEventListener("click", closeDialogs);
   document.getElementById("view-cull").addEventListener("click", () => setView("cull"));

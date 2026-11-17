@@ -129,23 +129,26 @@ def api_scores():
 def api_plan(body: dict):
     instruction = (body or {}).get("instruction", "")
     images = _images_with_overrides()
-    plan, explanation = None, None
+    plan, explanation, why = None, None, None
     try:
         from cull import agent
         plan = agent.make_plan(instruction, images)
-    except Exception:
+    except Exception as exc:
         plan = None
+        why = getattr(exc, "user_message", None)  # e.g. no license key, monthly limit reached
     if plan is None:
         plan = _preset_plan(instruction)
         explanation = "Preset plan"
-        plan["warnings"] = ["The instruction agent is unavailable, so Cull used a preset plan."]
+        plan["warnings"] = [f"{why} Cull used a preset plan." if why else
+                            "The instruction agent is unavailable, so Cull used a preset plan."]
     result = solver.run_plan(images, plan)
     if explanation is None:
         try:
             from cull import agent
             explanation = agent.explain(plan, result)
         except Exception:
-            explanation = "Preset plan"
+            # The plan is real, only its summary call failed (e.g. the monthly cap was reached).
+            explanation = agent._fallback_explanation(plan, result)
     return {"plan": plan, "result": result, "explanation": explanation}
 
 
@@ -214,21 +217,54 @@ def _learn_from_selection(picks):
         return 0
 
 
+def _settings_out(current):
+    """Settings for the page. The license key itself never goes to the page."""
+    from cull import license, lightroom
+    out = {k: v for k, v in current.items() if k != "license_key"}
+    return {**out, "guide": lightroom.guide(current["lightroom"]), "modes": lightroom.MODES,
+            "license": license.public()}
+
+
 @app.get("/api/settings")
 def api_settings():
-    from cull import lightroom, settings
-    current = settings.load()
-    return {**current, "guide": lightroom.guide(current["lightroom"]), "modes": lightroom.MODES}
+    from cull import settings
+    return _settings_out(settings.load())
 
 
 @app.post("/api/settings")
 def api_settings_update(body: dict):
-    from cull import lightroom, settings
+    from cull import settings
+    if "license_key" in (body or {}):
+        raise HTTPException(status_code=400, detail="use /api/license for the license key")
     try:
         current = settings.update(body or {})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {**current, "guide": lightroom.guide(current["lightroom"]), "modes": lightroom.MODES}
+    return _settings_out(current)
+
+
+@app.get("/api/license")
+def api_license():
+    """Whether a key is saved and, if the proxy answers, this month's usage."""
+    from cull import license, settings
+    out = license.public()
+    key = settings.load()["license_key"]
+    if key:
+        try:
+            out.update(license.check(key))
+        except license.LicenseError as exc:
+            out["error"] = str(exc)
+    return out
+
+
+@app.post("/api/license")
+def api_license_save(body: dict):
+    """Check a key with the proxy and save it. {"key": null} removes the saved key."""
+    from cull import license
+    try:
+        return license.save((body or {}).get("key"))
+    except license.LicenseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.post("/api/export")

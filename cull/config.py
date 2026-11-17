@@ -66,9 +66,15 @@ GENRE = os.getenv("GENRE", "wedding")
 # Frames kept when an instruction gives no number.
 DEFAULT_KEEP_FRACTION = float(os.getenv("DEFAULT_KEEP_FRACTION", "0.1"))
 
-# Instruction agent: "anthropic" or "presets". Unset means anthropic when a key is present.
+# Instruction agent:
+#   "anthropic"  development: calls Anthropic with the developer's key from .env
+#   "license"    the app: calls the Cull proxy with the photographer's license key (cull/license.py)
+#   "presets"    no LLM
+# Unset means anthropic when a key is present, otherwise license.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER") or ("anthropic" if os.getenv("ANTHROPIC_API_KEY")
-                                             else "presets")
+                                             else "license")
+# The Cull proxy (proxy/): holds the Anthropic key, checks the license, counts usage.
+PROXY_URL = os.getenv("CULL_PROXY_URL", "")
 ANTHROPIC_AGENT_MODEL = os.getenv("ANTHROPIC_AGENT_MODEL", "claude-opus-5-5")
 # low | medium | high | xhigh | max. Plans are a short translation task.
 ANTHROPIC_EFFORT = os.getenv("ANTHROPIC_EFFORT", "low")

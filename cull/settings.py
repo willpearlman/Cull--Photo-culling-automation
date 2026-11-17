@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 LIGHTROOM_MODES = ("classic", "cloud")
-DEFAULTS = {"lightroom": None, "recent_shoots": []}
+DEFAULTS = {"lightroom": None, "recent_shoots": [], "license_key": None}
 
 
 def path() -> Path:
@@ -37,6 +37,8 @@ def load() -> dict:
         out["lightroom"] = None
     if not isinstance(out["recent_shoots"], list):
         out["recent_shoots"] = []
+    if not isinstance(out["license_key"], str) or not out["license_key"]:
+        out["license_key"] = None
     return out
 
 
@@ -51,6 +53,9 @@ def update(changes: dict) -> dict:
         if key == "recent_shoots" and not (
                 isinstance(value, list) and all(isinstance(v, str) for v in value)):
             raise ValueError("recent_shoots must be a list of folder paths")
+        if key == "license_key" and not (
+                value is None or (isinstance(value, str) and 0 < len(value) <= 100)):
+            raise ValueError("license_key must be a short string or null")
         current[key] = value
     p = path()
     p.parent.mkdir(parents=True, exist_ok=True)

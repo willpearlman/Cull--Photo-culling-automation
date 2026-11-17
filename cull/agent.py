@@ -10,7 +10,9 @@ Beyond the solver's target and rules, a plan carries:
 - target_defaulted: true when the instruction gave no number and Cull chose the target.
 
 Providers (config.LLM_PROVIDER):
-- anthropic: Anthropic API, key from ANTHROPIC_API_KEY.
+- anthropic: Anthropic API, key from ANTHROPIC_API_KEY (development).
+- license: the same calls through the Cull proxy, with the photographer's license key where the
+  API key would go. The proxy holds the real key (proxy/, cull/license.py).
 - presets: no LLM. Both calls raise ProviderUnavailable and the server uses
   fixtures/preset_plans.json instead.
 """
@@ -32,8 +34,19 @@ _FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "cl
 EMPTY_INSTRUCTION = "Cull this shoot."
 
 
+LLM_PROVIDERS = ("anthropic", "license")
+
+
 class ProviderUnavailable(RuntimeError):
-    """No LLM is configured, or the call could not produce a usable answer."""
+    """No LLM is configured, or the call could not produce a usable answer.
+
+    user_message, when set, tells the photographer what to do about it (enter a license key,
+    wait for next month). Those failures are not retried.
+    """
+
+    def __init__(self, detail, user_message=None):
+        super().__init__(detail)
+        self.user_message = user_message
 
 
 def tag_vocab():
@@ -131,22 +144,58 @@ Shoot summary:
 {summary}"""
 
 _client = None
+_client_for = {}  # the base_url and key _client was built with
 _client_lock = threading.Lock()
 
 
 def _anthropic():
-    """One shared client. Imported lazily so the presets provider needs no SDK."""
-    global _client
+    """One shared client, rebuilt when the license key changes. Imported lazily so the presets
+    provider needs no SDK."""
+    global _client, _client_for
+    target = {}
+    if config.LLM_PROVIDER == "license":
+        from cull import settings
+        key = settings.load()["license_key"]
+        if not key:
+            raise ProviderUnavailable("no license key",
+                                      "Enter your license key to use typed instructions.")
+        if not config.PROXY_URL:
+            raise ProviderUnavailable("no proxy url")
+        # The proxy speaks the Anthropic API and reads the license from the API key header.
+        target = {"base_url": config.PROXY_URL, "api_key": key}
     with _client_lock:
-        if _client is None:
+        if _client is None or _client_for != target:
             import anthropic
-            _client = anthropic.Anthropic(timeout=60.0, max_retries=2)
-    return _client
+            _client = anthropic.Anthropic(timeout=60.0, max_retries=2, **target)
+            _client_for = target
+        return _client
+
+
+def _call(**request):
+    """The Messages call, with the failures a photographer can act on turned into messages."""
+    import anthropic
+    client = _anthropic()
+    try:
+        return client.beta.messages.create(**request)
+    except anthropic.APIStatusError as exc:
+        if config.LLM_PROVIDER != "license" or exc.status_code not in (401, 429):
+            raise
+        try:
+            message = exc.body["error"]["message"]
+        except (TypeError, KeyError):
+            message = ("Your license key was not accepted." if exc.status_code == 401
+                       else "Your license has reached its monthly instruction limit.")
+        raise ProviderUnavailable(f"proxy {exc.status_code}", message) from exc
+    except anthropic.APIConnectionError as exc:
+        if config.LLM_PROVIDER != "license":
+            raise
+        raise ProviderUnavailable("proxy unreachable", "Cull could not reach the instruction "
+                                  "service. Check your internet connection.") from exc
 
 
 def _create(max_tokens, **kwargs):
     """One Messages call on the configured provider. Returns the reply text."""
-    if config.LLM_PROVIDER != "anthropic":
+    if config.LLM_PROVIDER not in LLM_PROVIDERS:
         raise ProviderUnavailable(f"LLM_PROVIDER={config.LLM_PROVIDER!r}")
     model = config.ANTHROPIC_AGENT_MODEL
     extra = {}
@@ -154,8 +203,8 @@ def _create(max_tokens, **kwargs):
         # On a safety decline the API re-runs the request on a fallback model.
         extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
     output_config = {"effort": config.ANTHROPIC_EFFORT, **kwargs.pop("output_config", {})}
-    resp = _anthropic().beta.messages.create(
-        model=model, max_tokens=max_tokens, output_config=output_config, **extra, **kwargs)
+    resp = _call(model=model, max_tokens=max_tokens, output_config=output_config, **extra,
+                 **kwargs)
     if resp.stop_reason in ("refusal", "max_tokens"):
         raise ProviderUnavailable(f"stop_reason={resp.stop_reason}")
     return "".join(b.text for b in resp.content if b.type == "text").strip()
@@ -319,7 +368,7 @@ def make_plan(instruction, images):
         try:
             return validate(_plan_once(instruction, images), images, instruction)
         except ProviderUnavailable as exc:
-            if config.LLM_PROVIDER != "anthropic":
+            if config.LLM_PROVIDER not in LLM_PROVIDERS or exc.user_message:
                 raise
             last = exc
     raise last

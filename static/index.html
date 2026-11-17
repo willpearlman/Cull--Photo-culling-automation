@@ -15,6 +15,7 @@
     <button id="export-btn" type="button" disabled>Export</button>
     <button id="lr-mode" type="button" class="link" title="Which Lightroom you use"></button>
     <button id="open-btn" type="button" class="link" title="Open another folder of RAW files">Open shoot</button>
+    <button id="license-btn" type="button" class="link" title="Your Cull license key">License</button>
     <span id="spinner" class="spinner" hidden></span>
     <span id="status" class="status">loading…</span>
     <label class="tile-size">Size
@@ -122,6 +123,26 @@
         picks them up at a different point, so this decides when to run Cull.</p>
       <div id="setup-options" class="setup-options"></div>
       <p id="setup-hint" class="muted small" hidden>Press Esc to keep the current choice.</p>
+    </div>
+  </div>
+
+  <!-- License key: unlocks typed instructions. Everything else works without one. -->
+  <div id="license" class="dialog-backdrop" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="license-title">
+      <h2 id="license-title">License key</h2>
+      <p class="muted">A license key lets Cull turn what you type into a culling plan. Opening,
+        scoring and exporting a shoot work without one.</p>
+      <p id="license-status"></p>
+      <label class="field">New key
+        <input id="license-key" type="text" autocomplete="off" spellcheck="false"
+               placeholder="CULL-XXXXX-XXXXX-XXXXX-XXXXX" />
+      </label>
+      <p id="license-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button id="license-remove" type="button" class="secondary" hidden>Remove key</button>
+        <button id="license-close" type="button" class="secondary">Close</button>
+        <button id="license-save" type="button">Save key</button>
+      </div>
     </div>
   </div>
 

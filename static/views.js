@@ -33,13 +33,14 @@ async function setView(view) {
 // state.settings = {lightroom, guide, modes} from /api/settings.
 
 function dialogOpen() {
-  return ["setup", "guide", "open"].some((id) => !document.getElementById(id).hidden);
+  return ["setup", "guide", "open", "license"].some((id) => !document.getElementById(id).hidden);
 }
 
 function closeDialogs() {
   // The setup page cannot be dismissed until a mode is chosen.
   if (state.settings && state.settings.lightroom) document.getElementById("setup").hidden = true;
   document.getElementById("guide").hidden = true;
+  document.getElementById("license").hidden = true;
   // The open screen can be dismissed only back to a shoot that is loaded and not processing.
   if (state.images.length && !state.shootPolling) document.getElementById("open").hidden = true;
 }
@@ -131,6 +132,64 @@ async function pollShoot() {
   }
 }
 
+// --- License key -------------------------------------------------------------
+// state.settings.license = {set, hint, needed}. The key itself never comes back to the page.
+
+function renderLicenseButton() {
+  const lic = (state.settings && state.settings.license) || {};
+  const btn = document.getElementById("license-btn");
+  btn.hidden = !lic.needed;  // development runs on the developer's own API key
+  btn.textContent = lic.set ? "License" : "Enter license";
+}
+
+function renderLicense(lic, usage) {
+  const status = document.getElementById("license-status");
+  if (!lic.set) status.textContent = "No key saved.";
+  else if (usage && usage.error) status.textContent = "Key ending " + lic.hint + " is saved. " + usage.error;
+  else if (usage && usage.limit != null) {
+    status.textContent = "Key ending " + lic.hint + " is active. " + usage.used + " of " +
+      usage.limit + " instruction calls used this month.";
+  } else status.textContent = "Key ending " + lic.hint + " is saved.";
+  document.getElementById("license-remove").hidden = !lic.set;
+}
+
+async function openLicense() {
+  document.getElementById("license-key").value = "";
+  document.getElementById("license-error").hidden = true;
+  renderLicense((state.settings && state.settings.license) || {});
+  document.getElementById("license").hidden = false;
+  document.getElementById("license-key").focus();
+  try {
+    const usage = await getJSON("/api/license");  // asks the license server for this month's usage
+    renderLicense(usage, usage);
+  } catch (err) {
+    // Usage is a nicety: the saved state above is already shown.
+  }
+}
+
+async function saveLicense(key) {
+  const error = document.getElementById("license-error");
+  error.hidden = true;
+  const save = document.getElementById("license-save");
+  save.disabled = true;
+  try {
+    const res = await fetch("/api/license", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "The key could not be saved.");
+    state.settings.license = { set: data.set, hint: data.hint, needed: data.needed };
+    document.getElementById("license-key").value = "";
+    renderLicense(data, data);
+    renderLicenseButton();
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+  } finally {
+    save.disabled = false;
+  }
+}
+
 function renderModeButton() {
   const s = state.settings || {};
   document.getElementById("lr-mode").textContent =
@@ -145,6 +204,7 @@ async function loadSettings() {
     return;
   }
   renderModeButton();
+  renderLicenseButton();
   if (!state.settings.lightroom) openSetup();
 }
 

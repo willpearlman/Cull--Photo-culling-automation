@@ -13,3 +13,8 @@ work/
 models/
 build/
 dist/
+
+# Proxy (Cloudflare Worker)
+proxy/node_modules/
+proxy/.wrangler/
+proxy/.dev.vars

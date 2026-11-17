@@ -137,8 +137,10 @@ First matching tag wins. No match: no label.
 | GET | `/api/baseline?n=150` | none | `{"picks": [...]}` |
 | POST | `/api/override` | `{"path": str, "rating": 1 | 5 | null}` | `{"ok": true}` (null clears). Saved to `config.OVERRIDES_PATH` as `{path: rating}`, applied in memory. Never written into scores.json |
 | POST | `/api/export` | `{"picks": [...], "decisions": {...}}` | `{"written": int, "guide", "learned_from": int}` (guide: the Lightroom steps for the chosen mode, or null. learned_from: frames personal taste now learns from, 0 if the photographer changed nothing or there are too few; see `cull/personal.py`) |
-| GET | `/api/settings` | none | `{"lightroom": "classic" \| "cloud" \| null, "guide", "modes"}` |
+| GET | `/api/settings` | none | `{"lightroom": "classic" \| "cloud" \| null, "recent_shoots", "guide", "modes", "license": {"set", "hint", "needed"}}`. The license key itself is never returned |
 | POST | `/api/settings` | `{"lightroom": "classic" \| "cloud"}` | same as GET. Saved per user (`cull/settings.py`), 400 on a bad value |
+| GET | `/api/license` | none | `{"set", "hint", "needed"}` plus `{"used", "limit", "month"}` from the proxy, or `"error"` if it cannot be reached |
+| POST | `/api/license` | `{"key": str \| null}` | Checks the key with the proxy (`cull/license.py`, `proxy/`), saves it, returns the same as GET. 400 with the reason if the key is refused. null removes the saved key |
 | GET | `/thumb/{name}` | none | 400px JPEG from `work/thumbs/`, pre-built by the ingest stage (built on request for older shoots) |
 | GET | `/preview/{name}` | none | Full-resolution preview JPEG from `previews/`, served as-is (read only). Used for grid tiles at 3 columns or fewer |
 

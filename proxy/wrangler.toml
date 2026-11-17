@@ -1,0 +1,20 @@
+# Cull proxy: holds the Anthropic API key, checks the license, counts usage, forwards the call.
+name = "cull-proxy"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Instruction calls each license may make per calendar month (UTC). A license row can override it.
+MONTHLY_CAP = "1000"
+# What the app is allowed to ask for. Anything else is refused, so a license is not a general
+# Claude API key.
+ALLOWED_MODELS = "claude-opus-5-5"
+MAX_TOKENS = "8000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "cull"
+# Printed by `npx wrangler d1 create cull`. Not a secret.
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# The Anthropic key is a secret, never in this file:  npx wrangler secret put ANTHROPIC_API_KEY
